@@ -4,27 +4,14 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, date
-import time
 import os
-
-# ==========================================
-# AUTO-REFRESH EN TIEMPO REAL
-# ==========================================
-AUTOREFRESH_SEGUNDOS = 5  # Cambia este valor si quieres más/menos frecuencia
-
-if 'ultimo_refresh' not in st.session_state:
-    st.session_state.ultimo_refresh = time.time()
-
-if time.time() - st.session_state.ultimo_refresh >= AUTOREFRESH_SEGUNDOS:
-    st.session_state.ultimo_refresh = time.time()
-    st.rerun()
 
 # ==========================================
 # 1. CONFIGURACIÓN Y OPTIMIZACIÓN DE RECURSOS
 # ==========================================
 st.set_page_config(
-    page_title="Sistema Pro Caja Chica", 
-    page_icon="💼", 
+    page_title="Sistema Pro Caja Chica",
+    page_icon="💼",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -85,52 +72,17 @@ def init_db():
     # Insertar TODOS los centros de costo del Excel
     centros = [
         ("10000", "DIRECCIÓN GENERAL"),
-        ("11000", "DIRECTOR ADJUNTO"),
-        ("12000", "FINANZAS Y CONTABILIDAD"),
-        ("12100", "CONTABILIDAD"),
-        ("12200", "GESTIÓN PROCESOS"),
         ("12300", "TESORERÍA"),
-        ("12400", "CUENTAS POR PAGAR"),
-        ("12500", "COMPRAS"),
-        ("13000", "CAPITAL HUMANO"),
-        ("13100", "TALENTO CH"),
-        ("13200", "CULTURA & TALENTO"),
-        ("13300", "CAPACITACIÓN"),
-        ("13400", "ATRACCIÓN TALENTO"),
-        ("13500", "ADMIN PERSONAL"),
-        ("14000", "NEGOCIOS GRUPO"),
-        ("14100", "ATENCIÓN CLIENTES"),
-        ("14200", "WEALTH MANAGEMENT"),
-        ("14210", "GERENTE FWM1"),
-        ("14220", "GERENTE FWM2"),
-        ("14300", "GRANDES EMPRESAS"),
-        ("14310", "ASESOR FWM"),
-        ("14400", "COMERCIAL PARTNERS"),
-        ("15000", "JURÍDICO"),
-        ("15100", "JURÍDICO OPERATIVO"),
-        ("15200", "JURÍDICO ANALIST"),
-        ("15300", "CUMPLIMIENTO"),
-        ("16000", "DIROPERACIONES"),
         ("16100", "SERVICIOS GENERALES"),
-        ("16200", "LIMPIEZA"),
         ("16210", "RECEPCIÓN"),
-        ("16400", "MESA CONTRATOS"),
-        ("16410", "AUXILIAR CONTRATOS"),
-        ("17000", "COMUNICACIÓN"),
         ("18000", "SISTEMAS"),
-        ("19000", "NEGOCIOS IKARUS"),
-        ("19100", "COMERCIAL IKARUS"),
-        ("19110", "GERENTE IKARUS"),
-        ("19120", "BDM IKARUS"),
-        ("19200", "CALL CENTER"),
-        ("19210", "SUBGERENCIA CENTER"),
-        ("19220", "AGENTE MATUTINO"),
-        ("19230", "AGENTE VESPERTINO"),
+        ("19000", "COMERCIALIZACIÓN"),
+        ("20000", "OPERACIÓN"),
         ("99999", "OTROS")
     ]
     for codigo, nombre in centros:
         cursor.execute("INSERT OR IGNORE INTO centros_costo (codigo, nombre) VALUES (?, ?)", (codigo, nombre))
-        
+    
     conn.commit()
     return conn
 
@@ -154,8 +106,8 @@ def registrar_transaccion(conn, datos):
             INSERT INTO movimientos (fecha, tipo, centro_costo_id, concepto, tiene_factura, no_factura, solicitante, monto)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
-            datos['fecha'], datos['tipo'], datos['centro_costo_id'], 
-            datos['concepto'], datos['tiene_factura'], datos['no_factura'], 
+            datos['fecha'], datos['tipo'], datos['centro_costo_id'],
+            datos['concepto'], datos['tiene_factura'], datos['no_factura'],
             datos['solicitante'], datos['monto']
         ))
         conn.commit()
@@ -175,16 +127,13 @@ def main():
     menu = st.sidebar.radio("Navegación", [
         "📊 Dashboard Ejecutivo", 
         "📝 Registrar Movimiento", 
-        " Historial y Auditoría", 
-        "️ Configuración"
+        "📜 Historial y Auditoría", 
+        "⚙️ Configuración"
     ])
     
     # Obtener saldos globales para mostrar en el sidebar
     saldo_inicial, saldo_actual = obtener_saldo(conn)
     st.sidebar.metric("💰 Saldo Actual en Caja", f"${saldo_actual:,.2f}")
-    
-    # Indicador de auto-refresh
-    st.sidebar.markdown(f"🔄 Auto-refresh: cada {AUTOREFRESH_SEGUNDOS}s")
     
     # Enrutamiento de vistas
     if menu == "📊 Dashboard Ejecutivo":
@@ -198,7 +147,7 @@ def main():
 
 # --- VISTA 1: DASHBOARD ---
 def vista_dashboard(conn, saldo_inicial, saldo_actual):
-    st.title(" Dashboard Ejecutivo")
+    st.title("📊 Dashboard Ejecutivo")
     
     # KPIs
     col1, col2, col3, col4 = st.columns(4)
@@ -219,7 +168,7 @@ def vista_dashboard(conn, saldo_inicial, saldo_actual):
     cursor.execute("SELECT value FROM config WHERE key = 'alerta_saldo_minimo'")
     alerta_min = cursor.fetchone()['value']
     if saldo_actual < alerta_min:
-        st.error(f"️ **ALERTA CRÍTICA**: El saldo actual (${saldo_actual:,.2f}) ha caído por debajo del mínimo configurado (${alerta_min:,.2f}). Se requiere reposición inmediata.")
+        st.error(f"⚠️ **ALERTA CRÍTICA**: El saldo actual (${saldo_actual:,.2f}) ha caído por debajo del mínimo configurado (${alerta_min:,.2f}). Se requiere reposición inmediata.")
     
     st.markdown("---")
     
@@ -238,7 +187,6 @@ def vista_dashboard(conn, saldo_inicial, saldo_actual):
         resultados = cursor.fetchall()
         
         if resultados:
-            # Crear DataFrame con nombres de columna explícitos
             df_gastos = pd.DataFrame(resultados, columns=['centro', 'total'])
             fig_pie = px.pie(df_gastos, values='total', names='centro', hole=0.4, 
                            color_discrete_sequence=px.colors.qualitative.Pastel)
@@ -246,7 +194,7 @@ def vista_dashboard(conn, saldo_inicial, saldo_actual):
             st.plotly_chart(fig_pie, use_container_width=True)
         else:
             st.info("Sin datos de egresos para mostrar.")
-
+    
     with col_g2:
         st.subheader("Flujo de Caja Diario")
         cursor.execute('''
@@ -258,7 +206,6 @@ def vista_dashboard(conn, saldo_inicial, saldo_actual):
         resultados_flujo = cursor.fetchall()
         
         if resultados_flujo:
-            # Crear DataFrame con nombres de columna explícitos
             df_flujo = pd.DataFrame(resultados_flujo, columns=['fecha', 'tipo', 'total'])
             df_flujo_pivot = df_flujo.pivot(index='fecha', columns='tipo', values='total').fillna(0)
             
@@ -268,14 +215,14 @@ def vista_dashboard(conn, saldo_inicial, saldo_actual):
                                         name='Ingresos', marker_color='green'))
             if 'Egreso' in df_flujo_pivot.columns:
                 fig_bar.add_trace(go.Bar(x=df_flujo_pivot.index, y=df_flujo_pivot['Egreso'], 
-                                        name='Egresos', marker_color='red'))
+                                         name='Egresos', marker_color='red'))
             fig_bar.update_layout(barmode='group', xaxis_title="Fecha", yaxis_title="Monto ($)")
             st.plotly_chart(fig_bar, use_container_width=True)
         else:
             st.info("Sin datos de flujo para mostrar.")
     
     st.markdown("---")
-    st.subheader(" Resumen por Centro de Costo")
+    st.subheader("📈 Resumen por Centro de Costo")
     
     # Tabla resumen
     cursor.execute('''
@@ -301,7 +248,7 @@ def vista_dashboard(conn, saldo_inicial, saldo_actual):
 
 # --- VISTA 2: REGISTRO ---
 def vista_registro(conn):
-    st.title(" Registrar Nuevo Movimiento")
+    st.title("📝 Registrar Nuevo Movimiento")
     
     # Cargar catálogos
     cursor = conn.cursor()
@@ -322,7 +269,7 @@ def vista_registro(conn):
             tiene_factura = st.checkbox("¿Cuenta con Factura/Comprobante?")
             no_factura = st.text_input("Número de Factura / Comprobante")
             monto = st.number_input("Monto ($)", min_value=0.01, step=0.01, format="%.2f")
-            
+        
         st.markdown("<br>", unsafe_allow_html=True)
         submitted = st.form_submit_button("💾 Registrar Transacción", type="primary", use_container_width=True)
         
@@ -351,7 +298,7 @@ def vista_registro(conn):
 
 # --- VISTA 3: HISTORIAL ---
 def vista_historial(conn):
-    st.title(" Historial y Auditoría")
+    st.title("📜 Historial y Auditoría")
     
     cursor = conn.cursor()
     cursor.execute('''
@@ -366,9 +313,8 @@ def vista_historial(conn):
     resultados = cursor.fetchall()
     
     if resultados:
-        # Crear DataFrame con nombres de columna explícitos
         df = pd.DataFrame(resultados, 
-                         columns=['ID', 'Fecha', 'Tipo', 'Centro de Costo', 
+                          columns=['ID', 'Fecha', 'Tipo', 'Centro de Costo', 
                                  'Concepto', 'Solicitante', '¿Factura?', 
                                  'No. Factura', 'Monto'])
         
@@ -380,7 +326,7 @@ def vista_historial(conn):
             centro_filtro = st.multiselect("Filtrar por Centro", df['Centro de Costo'].unique(), default=df['Centro de Costo'].unique())
         with col_f3:
             factura_filtro = st.multiselect("¿Tiene Factura?", df['¿Factura?'].unique(), default=df['¿Factura?'].unique())
-            
+        
         df_filtrado = df[
             df['Tipo'].isin(tipo_filtro) & 
             df['Centro de Costo'].isin(centro_filtro) &
@@ -431,7 +377,7 @@ def vista_configuracion(conn):
             conn.commit()
             st.success(f"✅ Saldo inicial actualizado a ${nuevo_saldo:,.2f}")
             st.rerun()
-            
+        
     with col2:
         st.subheader("Parámetros de Alerta")
         nueva_alerta = st.number_input("Saldo Mínimo para Alerta ($)", value=float(alerta_actual), step=100.0)
@@ -442,7 +388,7 @@ def vista_configuracion(conn):
             st.rerun()
     
     st.markdown("---")
-    st.subheader(" Centros de Costo Registrados")
+    st.subheader("📋 Centros de Costo Registrados")
     cursor.execute("SELECT codigo, nombre FROM centros_costo ORDER BY codigo")
     centros = cursor.fetchall()
     df_centros = pd.DataFrame(centros, columns=['Código', 'Nombre'])

@@ -3,3 +3,4 @@ pandas
 plotly
 streamlit-calendar
 fpdf
+streamlit-navigation-bar

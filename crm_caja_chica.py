@@ -137,29 +137,69 @@ def get_db_connection():
     return conn
 
 # ==========================================
-# INICIALIZACIÓN DE BD
+# INICIALIZACIÓN DE BD CON MIGRACIÓN
 # ==========================================
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     
+    # Verificar si la tabla centros_costo existe y tiene la columna descripcion
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='centros_costo'")
+    table_exists = cursor.fetchone()
+    
+    if table_exists:
+        # Verificar columnas existentes
+        cursor.execute("PRAGMA table_info(centros_costo)")
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        # Si no tiene la columna descripcion, recrear la tabla
+        if 'descripcion' not in columns:
+            # Backup de datos existentes
+            cursor.execute("SELECT * FROM centros_costo")
+            old_data = cursor.fetchall()
+            
+            # Eliminar tabla antigua
+            cursor.execute("DROP TABLE centros_costo")
+            
+            # Crear nueva tabla con estructura correcta
+            cursor.execute('''
+                CREATE TABLE centros_costo (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    codigo TEXT UNIQUE NOT NULL,
+                    nombre TEXT NOT NULL,
+                    descripcion TEXT,
+                    activo INTEGER DEFAULT 1,
+                    creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Restaurar datos si los había
+            for row in old_data:
+                try:
+                    cursor.execute(
+                        "INSERT INTO centros_costo (codigo, nombre) VALUES (?, ?)",
+                        (row['codigo'], row['nombre'])
+                    )
+                except:
+                    pass
+    else:
+        # Crear tabla desde cero
+        cursor.execute('''
+            CREATE TABLE centros_costo (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                codigo TEXT UNIQUE NOT NULL,
+                nombre TEXT NOT NULL,
+                descripcion TEXT,
+                activo INTEGER DEFAULT 1,
+                creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+
     # Tabla de Configuración
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS config (
             key TEXT PRIMARY KEY,
             value REAL
-        )
-    ''')
-
-    # Tabla de Centros de Costo
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS centros_costo (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            codigo TEXT UNIQUE NOT NULL,
-            nombre TEXT NOT NULL,
-            descripcion TEXT,
-            activo INTEGER DEFAULT 1,
-            creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
 
@@ -184,7 +224,7 @@ def init_db():
     cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('saldo_inicial', 16550.00)")
     cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('alerta_saldo_minimo', 2000.00)")
 
-    # Centros de costo iniciales - Usar INSERT OR IGNORE correctamente
+    # Centros de costo iniciales - Verificar primero si existen
     centros = [
         ("10000", "DIRECCIÓN GENERAL", "Área de dirección y gerencia"),
         ("11000", "DIRECTOR ADJUNTO", "Dirección adjunta"),
@@ -198,16 +238,18 @@ def init_db():
         ("99999", "OTROS", "Otros centros de costo")
     ]
     
-    # Insertar centros de costo de forma segura
+    # Insertar solo si no existen
     for codigo, nombre, desc in centros:
-        try:
+        cursor.execute(
+            "SELECT COUNT(*) FROM centros_costo WHERE codigo = ?",
+            (codigo,)
+        )
+        count = cursor.fetchone()[0]
+        if count == 0:
             cursor.execute(
-                "INSERT OR IGNORE INTO centros_costo (codigo, nombre, descripcion) VALUES (?, ?, ?)",
+                "INSERT INTO centros_costo (codigo, nombre, descripcion) VALUES (?, ?, ?)",
                 (codigo, nombre, desc)
             )
-        except sqlite3.IntegrityError:
-            # Si ya existe, continuar
-            pass
     
     conn.commit()
     return conn
@@ -218,7 +260,8 @@ def init_db():
 def obtener_saldo(conn):
     cursor = conn.cursor()
     cursor.execute("SELECT value FROM config WHERE key = 'saldo_inicial'")
-    saldo_inicial = cursor.fetchone()['value']
+    result = cursor.fetchone()
+    saldo_inicial = result['value'] if result else 0.0
     cursor.execute("SELECT SUM(CASE WHEN tipo='Ingreso' THEN monto ELSE -monto END) as neto FROM movimientos")
     neto = cursor.fetchone()['neto'] or 0.0
     return saldo_inicial, saldo_inicial + neto
@@ -452,7 +495,8 @@ def vista_dashboard(conn):
     
     # Alerta de saldo mínimo
     cursor.execute("SELECT value FROM config WHERE key = 'alerta_saldo_minimo'")
-    alerta_min = cursor.fetchone()['value']
+    result = cursor.fetchone()
+    alerta_min = result['value'] if result else 2000.00
     if saldo_actual < alerta_min:
         st.error(f"⚠️ **ALERTA CRÍTICA**: El saldo actual (${saldo_actual:,.2f}) ha caído por debajo del mínimo configurado (${alerta_min:,.2f}). Se requiere reposición inmediata.")
     
@@ -933,17 +977,19 @@ def vista_configuracion(conn):
     
     cursor = conn.cursor()
     cursor.execute("SELECT value FROM config WHERE key = 'saldo_inicial'")
-    saldo_actual = cursor.fetchone()['value']
+    result = cursor.fetchone()
+    saldo_actual = result['value'] if result else 16550.00
     
     cursor.execute("SELECT value FROM config WHERE key = 'alerta_saldo_minimo'")
-    alerta_actual = cursor.fetchone()['value']
+    result = cursor.fetchone()
+    alerta_actual = result['value'] if result else 2000.00
     
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("💰 Ajuste de Saldo Inicial")
         nuevo_saldo = st.number_input("Saldo Inicial ($)", value=float(saldo_actual), step=100.0)
         if st.button("Actualizar Saldo Inicial", type="primary", use_container_width=True):
-            cursor.execute("UPDATE config SET value = ? WHERE key = 'saldo_inicial'", (nuevo_saldo,))
+            cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('saldo_inicial', ?)", (nuevo_saldo,))
             conn.commit()
             st.success(f"✅ Saldo inicial actualizado a ${nuevo_saldo:,.2f}")
             st.rerun()
@@ -952,7 +998,7 @@ def vista_configuracion(conn):
         st.subheader("⚠️ Parámetros de Alerta")
         nueva_alerta = st.number_input("Saldo Mínimo para Alerta ($)", value=float(alerta_actual), step=100.0)
         if st.button("Actualizar Alerta", type="primary", use_container_width=True):
-            cursor.execute("UPDATE config SET value = ? WHERE key = 'alerta_saldo_minimo'", (nueva_alerta,))
+            cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('alerta_saldo_minimo', ?)", (nueva_alerta,))
             conn.commit()
             st.success(f"✅ Alerta actualizada a ${nueva_alerta:,.2f}")
             st.rerun()

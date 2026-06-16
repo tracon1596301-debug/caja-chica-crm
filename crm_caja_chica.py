@@ -70,11 +70,11 @@ st.markdown("""
         border-radius: 8px;
     }
     
-    /* Tablas futuristas */
+    /* Tablas futuristas - Estilo profesional */
     div[data-testid="stDataFrame"] {
-        background: rgba(255, 255, 255, 0.05);
+        background: rgba(15, 23, 42, 0.6);
         border-radius: 10px;
-        border: 1px solid rgba(0, 212, 255, 0.3);
+        border: 1px solid rgba(0, 212, 255, 0.2);
     }
     
     /* Alertas mejoradas */
@@ -122,6 +122,21 @@ st.markdown("""
         border-radius: 15px;
         padding: 20px;
         border: 1px solid rgba(0, 212, 255, 0.3);
+    }
+    
+    /* Secciones con iconos */
+    .section-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
+        font-size: 1.3rem;
+        font-weight: bold;
+        color: #e0e0e0;
+    }
+    
+    .section-icon {
+        font-size: 1.5rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -500,13 +515,22 @@ def vista_dashboard(conn):
     if saldo_actual < alerta_min:
         st.error(f"⚠️ **ALERTA CRÍTICA**: El saldo actual (${saldo_actual:,.2f}) ha caído por debajo del mínimo configurado (${alerta_min:,.2f}). Se requiere reposición inmediata.")
     
-    st.markdown("---")
+    st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
     
-    # Gráficos
+    # ==========================================
+    # SECCIÓN DE GRÁFICOS - ESTILO PROFESIONAL
+    # ==========================================
     col_g1, col_g2 = st.columns(2)
     
     with col_g1:
-        st.subheader("📊 Distribución de Gastos por Centro de Costo")
+        # Título con icono
+        st.markdown("""
+        <div class='section-title'>
+            <span class='section-icon'>📊</span>
+            <span>Distribución de Gastos por Centro de Costo</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
         cursor.execute('''
             SELECT cc.nombre as centro, SUM(m.monto) as total 
             FROM movimientos m 
@@ -518,20 +542,44 @@ def vista_dashboard(conn):
         
         if resultados:
             df_gastos = pd.DataFrame(resultados, columns=['centro', 'total'])
-            fig_pie = px.pie(df_gastos, values='total', names='centro', hole=0.4, 
-                           color_discrete_sequence=px.colors.qualitative.Pastel)
-            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+            
+            # Crear gráfico de dona profesional
+            fig_pie = px.pie(
+                df_gastos, 
+                values='total', 
+                names='centro', 
+                hole=0.6,  # Dona más grande
+                color_discrete_sequence=['#4ECDC4']  # Color cyan/turquesa
+            )
+            
+            fig_pie.update_traces(
+                textposition='inside', 
+                textinfo='percent+label',
+                marker=dict(line=dict(color='#0f0c29', width=2))
+            )
+            
             fig_pie.update_layout(
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
-                font=dict(color='#e0e0e0')
+                font=dict(color='#e0e0e0', size=11),
+                height=400,
+                margin=dict(t=0, b=0, l=0, r=0),
+                showlegend=False
             )
+            
             st.plotly_chart(fig_pie, use_container_width=True)
         else:
             st.info("Sin datos de egresos para mostrar.")
     
     with col_g2:
-        st.subheader("📈 Flujo de Caja Diario")
+        # Título con icono
+        st.markdown("""
+        <div class='section-title'>
+            <span class='section-icon'>📈</span>
+            <span>Flujo de Caja Diario</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
         cursor.execute('''
             SELECT fecha, tipo, SUM(monto) as total 
             FROM movimientos 
@@ -545,12 +593,27 @@ def vista_dashboard(conn):
             df_flujo_pivot = df_flujo.pivot(index='fecha', columns='tipo', values='total').fillna(0)
             
             fig_bar = go.Figure()
+            
+            # Ingresos - Verde brillante
             if 'Ingreso' in df_flujo_pivot.columns:
-                fig_bar.add_trace(go.Bar(x=df_flujo_pivot.index, y=df_flujo_pivot['Ingreso'], 
-                                        name='Ingresos', marker_color='#38ef7d'))
+                fig_bar.add_trace(go.Bar(
+                    x=df_flujo_pivot.index, 
+                    y=df_flujo_pivot['Ingreso'], 
+                    name='Ingresos', 
+                    marker_color='#4ade80',  # Verde brillante
+                    hovertemplate='<b>%{x}</b><br>Ingresos: $%{y:,.2f}<extra></extra>'
+                ))
+            
+            # Egresos - Rojo
             if 'Egreso' in df_flujo_pivot.columns:
-                fig_bar.add_trace(go.Bar(x=df_flujo_pivot.index, y=df_flujo_pivot['Egreso'], 
-                                         name='Egresos', marker_color='#eb3349'))
+                fig_bar.add_trace(go.Bar(
+                    x=df_flujo_pivot.index, 
+                    y=df_flujo_pivot['Egreso'], 
+                    name='Egresos', 
+                    marker_color='#f87171',  # Rojo
+                    hovertemplate='<b>%{x}</b><br>Egresos: $%{y:,.2f}<extra></extra>'
+                ))
+            
             fig_bar.update_layout(
                 barmode='group', 
                 xaxis_title="Fecha", 
@@ -558,14 +621,40 @@ def vista_dashboard(conn):
                 plot_bgcolor='rgba(0,0,0,0)', 
                 paper_bgcolor='rgba(0,0,0,0)',
                 font=dict(color='#e0e0e0'),
-                legend=dict(font=dict(color='#e0e0e0'))
+                legend=dict(
+                    orientation="h", 
+                    y=1.05,
+                    x=0,
+                    font=dict(color='#e0e0e0')
+                ),
+                height=400,
+                margin=dict(t=0, b=0, l=0, r=0),
+                xaxis=dict(
+                    tickangle=45,
+                    tickfont=dict(size=10, color='#e0e0e0')
+                ),
+                yaxis=dict(
+                    tickfont=dict(size=10, color='#e0e0e0'),
+                    tickformat=',.0f'
+                ),
+                hovermode='x unified'
             )
+            
             st.plotly_chart(fig_bar, use_container_width=True)
         else:
             st.info("Sin datos de flujo para mostrar.")
     
-    st.markdown("---")
-    st.subheader("📋 Resumen por Centro de Costo")
+    st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
+    
+    # ==========================================
+    # TABLA RESUMEN - ESTILO PROFESIONAL
+    # ==========================================
+    st.markdown("""
+    <div class='section-title'>
+        <span class='section-icon'>📋</span>
+        <span>Resumen por Centro de Costo</span>
+    </div>
+    """, unsafe_allow_html=True)
     
     cursor.execute('''
         SELECT cc.codigo, cc.nombre, 
@@ -583,10 +672,41 @@ def vista_dashboard(conn):
         df_resumen = pd.DataFrame(resultados_resumen, 
                                   columns=['Código', 'Centro de Costo', 'Movimientos', 
                                          'Total Egresos', 'Total Ingresos'])
-        st.dataframe(df_resumen.style.format({
+        
+        # Formatear la tabla con estilo profesional
+        styled_table = df_resumen.style.format({
             'Total Egresos': '${:,.2f}',
             'Total Ingresos': '${:,.2f}'
-        }), use_container_width=True)
+        }).set_properties(**{
+            'background-color': 'rgba(15, 23, 42, 0.6)',
+            'color': '#e0e0e0',
+            'border': '1px solid rgba(0, 212, 255, 0.1)',
+            'padding': '12px'
+        }).set_table_styles([
+            {
+                'selector': 'th',
+                'props': [
+                    ('background-color', 'rgba(0, 212, 255, 0.2)'),
+                    ('color', '#00d4ff'),
+                    ('font-weight', 'bold'),
+                    ('text-align', 'left'),
+                    ('padding', '12px')
+                ]
+            },
+            {
+                'selector': 'td',
+                'props': [
+                    ('text-align', 'left'),
+                    ('padding', '12px')
+                ]
+            }
+        ])
+        
+        st.dataframe(styled_table, use_container_width=True, height=400)
+    else:
+        st.info("No hay datos de centros de costo para mostrar.")
+
+# ... (El resto del código permanece igual - funciones vista_centros_costo, vista_registro, etc.)
 
 def vista_centros_costo(conn):
     st.title("🏢 Gestión de Centros de Costo")

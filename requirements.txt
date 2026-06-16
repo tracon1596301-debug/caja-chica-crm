@@ -2,4 +2,4 @@ streamlit
 pandas
 plotly
 streamlit-calendar
-# otros paquetes que uses
+matplotlib

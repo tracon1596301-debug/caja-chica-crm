@@ -8,7 +8,7 @@ import os
 from streamlit_calendar import calendar
 
 # ==========================================
-# CONFIGURACIÓN DE PÁGINA PROFESIONAL
+# 1. CONFIGURACIÓN DE PÁGINA PROFESIONAL
 # ==========================================
 st.set_page_config(
     page_title="Sistema Pro Caja Chica | Enterprise",
@@ -18,7 +18,7 @@ st.set_page_config(
 )
 
 # ==========================================
-# CSS PERSONALIZADO - DISEÑO FUTURISTA
+# 2. CSS PERSONALIZADO - DISEÑO FUTURISTA
 # ==========================================
 def load_custom_css():
     st.markdown("""
@@ -30,7 +30,7 @@ def load_custom_css():
     }
     
     /* Sidebar futurista */
-    .css-1d391kg, [data-testid="stSidebar"] {
+    [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #020617 0%, #0f172a 100%);
         border-right: 1px solid rgba(59, 130, 246, 0.3);
     }
@@ -100,25 +100,6 @@ def load_custom_css():
         text-shadow: 0 0 10px rgba(59, 130, 246, 0.5);
     }
     
-    /* Alertas personalizadas */
-    .alert-success {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        color: white;
-        padding: 16px;
-        border-radius: 12px;
-        margin: 16px 0;
-        border-left: 4px solid #34d399;
-    }
-    
-    .alert-error {
-        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-        color: white;
-        padding: 16px;
-        border-radius: 12px;
-        margin: 16px 0;
-        border-left: 4px solid #f87171;
-    }
-    
     /* Input fields futuristas */
     .stTextInput>div>div>input, .stNumberInput>div>div>input {
         background: rgba(15, 23, 42, 0.6);
@@ -135,8 +116,8 @@ def load_custom_css():
         border: 1px solid rgba(59, 130, 246, 0.2);
     }
     
-    /* Ocultar detalle del evento del calendario */
-    [data-testid="stSidebar"] > div > div > div > div > div > pre {
+    /* Ocultar detalle del evento del calendario (JSON) */
+    [data-testid="stSidebar"] pre {
         display: none !important;
     }
     
@@ -151,18 +132,11 @@ def load_custom_css():
         background: rgba(15, 23, 42, 0.6);
         border-radius: 8px;
     }
-    
-    /* Selectbox styling */
-    .stSelectbox>div>div>div {
-        background: rgba(15, 23, 42, 0.6);
-        border: 1px solid rgba(59, 130, 246, 0.3);
-        color: #e2e8f0;
-    }
     </style>
     """, unsafe_allow_html=True)
 
 # ==========================================
-# CONEXIÓN A BASE DE DATOS
+# 3. CONEXIÓN A BASE DE DATOS
 # ==========================================
 @st.cache_resource
 def get_db_connection():
@@ -172,12 +146,13 @@ def get_db_connection():
     return conn
 
 # ==========================================
-# INICIALIZACIÓN DE BD
+# 4. INICIALIZACIÓN DE BD (CORREGIDA)
 # ==========================================
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     
+    # Tabla de Configuración
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS config (
             key TEXT PRIMARY KEY,
@@ -185,17 +160,16 @@ def init_db():
         )
     ''')
     
+    # Tabla de Centros de Costo (SOLO 2 COLUMNAS)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS centros_costo (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             codigo TEXT UNIQUE NOT NULL,
-            nombre TEXT NOT NULL,
-            descripcion TEXT,
-            activo INTEGER DEFAULT 1,
-            creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            nombre TEXT NOT NULL
         )
     ''')
     
+    # Tabla de Movimientos
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS movimientos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -212,28 +186,33 @@ def init_db():
         )
     ''')
     
+    # Datos semilla
     cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('saldo_inicial', 16550.00)")
     cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('alerta_saldo_minimo', 2000.00)")
     
+    # Centros de costo iniciales (SOLO 2 VALORES)
     centros_iniciales = [
-        ("10000", "DIRECCIÓN GENERAL", "Área de dirección y gerencia"),
-        ("12300", "TESORERÍA", "Departamento de tesorería"),
-        ("16100", "SERVICIOS GENERALES", "Servicios generales y mantenimiento"),
-        ("16210", "RECEPCIÓN", "Recepción y atención"),
-        ("18000", "SISTEMAS", "Departamento de TI y sistemas"),
+        ("10000", "DIRECCIÓN GENERAL"),
+        ("12300", "TESORERÍA"),
+        ("16100", "SERVICIOS GENERALES"),
+        ("16210", "RECEPCIÓN"),
+        ("18000", "SISTEMAS"),
+        ("19000", "COMERCIALIZACIÓN"),
+        ("20000", "OPERACIÓN"),
+        ("99999", "OTROS")
     ]
     
-    for codigo, nombre, desc in centros_iniciales:
-        cursor.execute('''
-            INSERT OR IGNORE INTO centros_costo (codigo, nombre, descripcion) 
-            VALUES (?, ?, ?)
-        ''', (codigo, nombre, desc))
+    for codigo, nombre in centros_iniciales:
+        cursor.execute(
+            "INSERT OR IGNORE INTO centros_costo (codigo, nombre) VALUES (?, ?)",
+            (codigo, nombre)
+        )
     
     conn.commit()
     return conn
 
 # ==========================================
-# FUNCIONES DE NEGOCIO
+# 5. FUNCIONES DE NEGOCIO
 # ==========================================
 def obtener_saldo(conn):
     cursor = conn.cursor()
@@ -263,26 +242,14 @@ def obtener_estadisticas(conn):
     """)
     movimientos_mes = cursor.fetchone()[0]
     
-    cursor.execute("""
-        SELECT cc.nombre, SUM(m.monto) as total
-        FROM movimientos m
-        JOIN centros_costo cc ON m.centro_costo_id = cc.id
-        WHERE m.tipo = 'Egreso'
-        GROUP BY cc.id
-        ORDER BY total DESC
-        LIMIT 1
-    """)
-    centro_top = cursor.fetchone()
-    
     return {
         'total_ingresos': total_ingresos,
         'total_egresos': total_egresos,
-        'movimientos_mes': movimientos_mes,
-        'centro_top': centro_top
+        'movimientos_mes': movimientos_mes
     }
 
 # ==========================================
-# VISTA: DASHBOARD EJECUTIVO
+# 6. VISTA: DASHBOARD EJECUTIVO
 # ==========================================
 def vista_dashboard(conn):
     st.title("📊 Dashboard Ejecutivo")
@@ -319,7 +286,7 @@ def vista_dashboard(conn):
     with col4:
         color = "#10b981" if saldo_actual >= 0 else "#ef4444"
         st.markdown(f"""
-        <div class="metric-card" style="background: linear-gradient(135deg, rgba({16 if color == '#10b981' else 239}, {185 if color == '#10b981' else 68}, {129 if color == '#10b981' else 68}, 0.2) 0%, rgba({5 if color == '#10b981' else 220}, {150 if color == '#10b981' else 38}, {105 if color == '#10b981' else 38}, 0.3) 100%); border-color: {color};">
+        <div class="metric-card" style="background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(30, 64, 175, 0.3) 100%); border-color: {color};">
             <div class="metric-label">Saldo Actual</div>
             <div class="metric-value">${saldo_actual:,.2f}</div>
         </div>
@@ -359,7 +326,7 @@ def vista_dashboard(conn):
             st.info("Sin datos de egresos para mostrar.")
 
     with col_g2:
-        st.subheader("📅 Flujo de Caja - Últimos 30 Días")
+        st.subheader(" Flujo de Caja - Últimos 30 Días")
         cursor.execute("""
             SELECT fecha, tipo, SUM(monto) as total 
             FROM movimientos 
@@ -427,12 +394,12 @@ def vista_dashboard(conn):
         }), use_container_width=True)
 
 # ==========================================
-# VISTA: GESTIÓN DE CENTROS DE COSTO (CRUD)
+# 7. VISTA: GESTIÓN DE CENTROS DE COSTO (CRUD)
 # ==========================================
 def vista_centros_costo(conn):
     st.title("🏢 Gestión de Centros de Costo")
     
-    tab_create, tab_list, tab_edit = st.tabs(["➕ Nuevo Centro", "📋 Lista de Centros", "️ Editar/Eliminar"])
+    tab_create, tab_list, tab_edit = st.tabs(["➕ Nuevo Centro", " Lista de Centros", "✏️ Editar/Eliminar"])
     
     with tab_create:
         st.subheader("Crear Nuevo Centro de Costo")
@@ -442,7 +409,7 @@ def vista_centros_costo(conn):
             codigo = st.text_input("Código*", placeholder="Ej: 19000")
             nombre = st.text_input("Nombre*", placeholder="Ej: MARKETING")
         with col2:
-            descripcion = st.text_area("Descripción", placeholder="Descripción del centro de costo")
+            descripcion = st.text_area("Descripción (opcional)", placeholder="Descripción del centro de costo")
         
         if st.button("💾 Guardar Centro de Costo", use_container_width=True):
             if not codigo or not nombre:
@@ -451,9 +418,9 @@ def vista_centros_costo(conn):
                 try:
                     cursor = conn.cursor()
                     cursor.execute('''
-                        INSERT INTO centros_costo (codigo, nombre, descripcion, activo)
-                        VALUES (?, ?, ?, 1)
-                    ''', (codigo.upper(), nombre.upper(), descripcion))
+                        INSERT INTO centros_costo (codigo, nombre)
+                        VALUES (?, ?)
+                    ''', (codigo.upper(), nombre.upper()))
                     conn.commit()
                     st.success(f"✅ Centro de costo '{nombre}' creado exitosamente")
                     st.balloons()
@@ -463,32 +430,14 @@ def vista_centros_costo(conn):
     with tab_list:
         st.subheader("Centros de Costo Registrados")
         
-        col1, col2 = st.columns(2)
-        with col1:
-            filtro_activo = st.checkbox("Mostrar solo activos", value=True)
-        
         cursor = conn.cursor()
-        if filtro_activo:
-            cursor.execute("SELECT codigo, nombre, descripcion, activo FROM centros_costo WHERE activo=1 ORDER BY codigo")
-        else:
-            cursor.execute("SELECT codigo, nombre, descripcion, activo FROM centros_costo ORDER BY codigo")
-        
+        cursor.execute("SELECT codigo, nombre FROM centros_costo ORDER BY codigo")
         centros = cursor.fetchall()
         
         if centros:
-            df_centros = pd.DataFrame(centros, columns=['Código', 'Nombre', 'Descripción', 'Activo'])
-            df_centros['Activo'] = df_centros['Activo'].map({1: '✅ Sí', 0: '❌ No'})
-            
-            st.dataframe(
-                df_centros,
-                use_container_width=True,
-                hide_index=True
-            )
-            
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Total Centros", len(centros))
-            col2.metric("Centros Activos", sum(1 for c in centros if c[3] == 1))
-            col3.metric("Centros Inactivos", sum(1 for c in centros if c[3] == 0))
+            df_centros = pd.DataFrame(centros, columns=['Código', 'Nombre'])
+            st.dataframe(df_centros, use_container_width=True, hide_index=True)
+            st.metric("Total Centros", len(centros))
         else:
             st.info("No hay centros de costo registrados")
     
@@ -496,7 +445,7 @@ def vista_centros_costo(conn):
         st.subheader("Editar o Eliminar Centro de Costo")
         
         cursor = conn.cursor()
-        cursor.execute("SELECT id, codigo, nombre, descripcion FROM centros_costo ORDER BY codigo")
+        cursor.execute("SELECT id, codigo, nombre FROM centros_costo ORDER BY codigo")
         centros = cursor.fetchall()
         
         if centros:
@@ -505,30 +454,9 @@ def vista_centros_costo(conn):
             
             if seleccion:
                 centro_id = opciones[seleccion]
-                cursor.execute("SELECT * FROM centros_costo WHERE id=?", (centro_id,))
-                centro = cursor.fetchone()
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    nuevo_codigo = st.text_input("Código", value=centro['codigo'])
-                    nuevo_nombre = st.text_input("Nombre", value=centro['nombre'])
-                with col2:
-                    nueva_desc = st.text_area("Descripción", value=centro['descripcion'] or "")
-                    nuevo_activo = st.checkbox("Activo", value=bool(centro['activo']))
                 
                 col_btn1, col_btn2 = st.columns(2)
                 with col_btn1:
-                    if st.button("✏️ Actualizar", use_container_width=True):
-                        cursor.execute('''
-                            UPDATE centros_costo 
-                            SET codigo=?, nombre=?, descripcion=?, activo=?
-                            WHERE id=?
-                        ''', (nuevo_codigo.upper(), nuevo_nombre.upper(), nueva_desc, 1 if nuevo_activo else 0, centro_id))
-                        conn.commit()
-                        st.success("✅ Centro de costo actualizado correctamente")
-                        st.rerun()
-                
-                with col_btn2:
                     if st.button("🗑️ Eliminar", use_container_width=True, type="secondary"):
                         cursor.execute("SELECT COUNT(*) FROM movimientos WHERE centro_costo_id=?", (centro_id,))
                         count = cursor.fetchone()[0]
@@ -544,13 +472,13 @@ def vista_centros_costo(conn):
             st.info("No hay centros de costo para editar")
 
 # ==========================================
-# VISTA: REGISTRO DE MOVIMIENTOS
+# 8. VISTA: REGISTRO DE MOVIMIENTOS
 # ==========================================
 def vista_registro(conn):
     st.title("📝 Registrar Movimiento")
     
     cursor = conn.cursor()
-    cursor.execute("SELECT id, codigo, nombre FROM centros_costo WHERE activo=1 ORDER BY nombre")
+    cursor.execute("SELECT id, codigo, nombre FROM centros_costo ORDER BY nombre")
     centros = cursor.fetchall()
     opciones_centros = {f"{c['codigo']} - {c['nombre']}": c['id'] for c in centros}
     
@@ -609,10 +537,10 @@ def vista_registro(conn):
                     st.error(f"❌ Error en base de datos: {str(e)}")
 
 # ==========================================
-# VISTA: HISTORIAL Y AUDITORÍA (CORREGIDA)
+# 9. VISTA: HISTORIAL Y AUDITORÍA (SIN background_gradient)
 # ==========================================
 def vista_historial(conn):
-    st.title("📜 Historial y Auditoría")
+    st.title(" Historial y Auditoría")
     
     cursor = conn.cursor()
     cursor.execute('''
@@ -633,16 +561,13 @@ def vista_historial(conn):
                                  'No. Factura', 'Monto'])
         
         with st.expander("🔍 Filtros Avanzados", expanded=False):
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 tipo_filtro = st.multiselect("Tipo", df['Tipo'].unique(), default=df['Tipo'].unique())
             with col2:
                 centro_filtro = st.multiselect("Centro", df['Centro de Costo'].unique(), default=df['Centro de Costo'].unique())
             with col3:
                 factura_filtro = st.multiselect("¿Tiene Factura?", df['¿Factura?'].unique(), default=df['¿Factura?'].unique())
-            with col4:
-                fecha_inicio = st.date_input("Desde", value=None)
-                fecha_fin = st.date_input("Hasta", value=None)
         
         df_filtrado = df[
             df['Tipo'].isin(tipo_filtro) & 
@@ -650,14 +575,7 @@ def vista_historial(conn):
             df['¿Factura?'].isin(factura_filtro)
         ]
         
-        if fecha_inicio and fecha_fin:
-            df_filtrado['Fecha'] = pd.to_datetime(df_filtrado['Fecha'])
-            df_filtrado = df_filtrado[
-                (df_filtrado['Fecha'] >= pd.Timestamp(fecha_inicio)) & 
-                (df_filtrado['Fecha'] <= pd.Timestamp(fecha_fin))
-            ]
-        
-        # MOSTRAR TABLA SIN background_gradient (que requiere matplotlib)
+        # MOSTRAR TABLA SIN background_gradient (evita error de matplotlib)
         st.dataframe(
             df_filtrado.style.format({"Monto": "${:,.2f}"}),
             use_container_width=True,
@@ -680,7 +598,7 @@ def vista_historial(conn):
         st.info("No hay movimientos registrados en el sistema.")
 
 # ==========================================
-# VISTA: CALENDARIO (CORREGIDA - OCULTA DETALLE)
+# 10. VISTA: CALENDARIO (JSON OCULTO)
 # ==========================================
 def vista_calendario(conn):
     st.title("📅 Calendario de Movimientos")
@@ -704,11 +622,6 @@ def vista_calendario(conn):
             'end': f"{mov['fecha']}T17:00:00",
             'backgroundColor': color,
             'borderColor': color,
-            'extendedProps': {
-                'monto': mov['monto'],
-                'centro_costo': mov['centro_costo'],
-                'tipo': mov['tipo']
-            }
         })
     
     calendar_options = {
@@ -738,14 +651,9 @@ def vista_calendario(conn):
             margin: 2px 0;
             border-radius: 4px;
         }
-        .fc {
-            background: rgba(15, 23, 42, 0.8);
-            border-radius: 12px;
-            padding: 10px;
-        }
     """
     
-    # NO mostrar el resultado del calendario (oculta el JSON)
+    # NO guardar el resultado (oculta el JSON)
     calendar(
         events=calendar_events,
         options=calendar_options,
@@ -753,9 +661,8 @@ def vista_calendario(conn):
         key='calendar_caja_chica'
     )
     
-    # Mostrar resumen del mes seleccionado sin el JSON crudo
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-    st.subheader("📊 Resumen de Movimientos")
+    st.subheader(" Resumen de Movimientos")
     
     if movimientos:
         df_mov = pd.DataFrame(movimientos, columns=['fecha', 'tipo', 'concepto', 'monto', 'centro_costo'])
@@ -767,10 +674,10 @@ def vista_calendario(conn):
             st.metric("Total Egresos", f"${df_mov[df_mov['tipo']=='Egreso']['monto'].sum():,.2f}")
 
 # ==========================================
-# VISTA: CONFIGURACIÓN
+# 11. VISTA: CONFIGURACIÓN
 # ==========================================
 def vista_configuracion(conn):
-    st.title("️ Configuración del Sistema")
+    st.title("⚙️ Configuración del Sistema")
     
     cursor = conn.cursor()
     cursor.execute("SELECT value FROM config WHERE key = 'saldo_inicial'")
@@ -790,7 +697,7 @@ def vista_configuracion(conn):
             st.rerun()
             
     with col2:
-        st.subheader("️ Parámetros de Alerta")
+        st.subheader("⚠️ Parámetros de Alerta")
         nueva_alerta = st.number_input("Saldo Mínimo para Alerta ($)", value=float(alerta_actual), step=100.0)
         if st.button("Actualizar Alerta", type="primary", use_container_width=True):
             cursor.execute("UPDATE config SET value = ? WHERE key = 'alerta_saldo_minimo'", (nueva_alerta,))
@@ -800,13 +707,13 @@ def vista_configuracion(conn):
     
     st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
     st.subheader("📋 Centros de Costo Registrados")
-    cursor.execute("SELECT codigo, nombre, descripcion FROM centros_costo ORDER BY codigo")
+    cursor.execute("SELECT codigo, nombre FROM centros_costo ORDER BY codigo")
     centros = cursor.fetchall()
-    df_centros = pd.DataFrame(centros, columns=['Código', 'Nombre', 'Descripción'])
+    df_centros = pd.DataFrame(centros, columns=['Código', 'Nombre'])
     st.dataframe(df_centros, use_container_width=True)
 
 # ==========================================
-# MAIN
+# 12. MAIN
 # ==========================================
 def main():
     load_custom_css()
@@ -833,8 +740,8 @@ def main():
         menu = st.radio(
             "Navegación",
             [
-                "📊 Dashboard Ejecutivo",
-                " Centros de Costo",
+                " Dashboard Ejecutivo",
+                "🏢 Centros de Costo",
                 "📝 Registrar Movimiento",
                 "📜 Historial y Auditoría",
                 "📅 Calendario de Movimientos",
@@ -856,7 +763,7 @@ def main():
         vista_dashboard(conn)
     elif menu == "🏢 Centros de Costo":
         vista_centros_costo(conn)
-    elif menu == "📝 Registrar Movimiento":
+    elif menu == " Registrar Movimiento":
         vista_registro(conn)
     elif menu == "📜 Historial y Auditoría":
         vista_historial(conn)

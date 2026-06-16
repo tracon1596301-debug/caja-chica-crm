@@ -180,11 +180,11 @@ def init_db():
         )
     ''')
 
-    # Datos semilla
+    # Datos semilla - Configuración
     cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('saldo_inicial', 16550.00)")
     cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('alerta_saldo_minimo', 2000.00)")
 
-    # Centros de costo iniciales
+    # Centros de costo iniciales - Usar INSERT OR IGNORE correctamente
     centros = [
         ("10000", "DIRECCIÓN GENERAL", "Área de dirección y gerencia"),
         ("11000", "DIRECTOR ADJUNTO", "Dirección adjunta"),
@@ -198,11 +198,16 @@ def init_db():
         ("99999", "OTROS", "Otros centros de costo")
     ]
     
+    # Insertar centros de costo de forma segura
     for codigo, nombre, desc in centros:
-        cursor.execute(
-            "INSERT OR IGNORE INTO centros_costo (codigo, nombre, descripcion) VALUES (?, ?, ?)",
-            (codigo, nombre, desc)
-        )
+        try:
+            cursor.execute(
+                "INSERT OR IGNORE INTO centros_costo (codigo, nombre, descripcion) VALUES (?, ?, ?)",
+                (codigo, nombre, desc)
+            )
+        except sqlite3.IntegrityError:
+            # Si ya existe, continuar
+            pass
     
     conn.commit()
     return conn

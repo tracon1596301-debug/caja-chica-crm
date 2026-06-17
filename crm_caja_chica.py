@@ -7,6 +7,11 @@ from datetime import datetime, date
 import os
 from fpdf import FPDF
 from streamlit_calendar import calendar
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')
+import io
+import base64
 
 # ==========================================
 # CONFIGURACIÓN DE PÁGINA AVANZADA
@@ -70,11 +75,11 @@ st.markdown("""
         border-radius: 8px;
     }
     
-    /* Tablas futuristas - Estilo profesional */
+    /* Tablas futuristas */
     div[data-testid="stDataFrame"] {
-        background: rgba(15, 23, 42, 0.6);
+        background: rgba(255, 255, 255, 0.05);
         border-radius: 10px;
-        border: 1px solid rgba(0, 212, 255, 0.2);
+        border: 1px solid rgba(0, 212, 255, 0.3);
     }
     
     /* Alertas mejoradas */
@@ -122,21 +127,6 @@ st.markdown("""
         border-radius: 15px;
         padding: 20px;
         border: 1px solid rgba(0, 212, 255, 0.3);
-    }
-    
-    /* Secciones con iconos */
-    .section-title {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin-bottom: 20px;
-        font-size: 1.3rem;
-        font-weight: bold;
-        color: #e0e0e0;
-    }
-    
-    .section-icon {
-        font-size: 1.5rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -297,29 +287,65 @@ def registrar_transaccion(conn, datos):
     except Exception as e:
         return False, f"Error en base de datos: {str(e)}"
 
+def actualizar_movimiento(conn, id_movimiento, datos):
+    cursor = conn.cursor()
+    try:
+        cursor.execute('''
+            UPDATE movimientos 
+            SET fecha=?, tipo=?, centro_costo_id=?, concepto=?, tiene_factura=?, 
+                no_factura=?, solicitante=?, monto=?
+            WHERE id=?
+        ''', (
+            datos['fecha'], datos['tipo'], datos['centro_costo_id'],
+            datos['concepto'], datos['tiene_factura'], datos['no_factura'],
+            datos['solicitante'], datos['monto'], id_movimiento
+        ))
+        conn.commit()
+        return True, "Movimiento actualizado exitosamente."
+    except Exception as e:
+        return False, f"Error al actualizar: {str(e)}"
+
+def eliminar_movimiento(conn, id_movimiento):
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM movimientos WHERE id=?", (id_movimiento,))
+        conn.commit()
+        return True, "Movimiento eliminado exitosamente."
+    except Exception as e:
+        return False, f"Error al eliminar: {str(e)}"
+
 def generar_pdf_dashboard(conn):
-    """Genera un PDF profesional del dashboard"""
+    """Genera un PDF profesional del dashboard con gráficos"""
     cursor = conn.cursor()
     saldo_inicial, saldo_actual = obtener_saldo(conn)
     
     # Crear PDF
     pdf = FPDF()
     pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
     
     # Header
     pdf.set_font("Arial", "B", 20)
+    pdf.set_text_color(0, 100, 200)
     pdf.cell(0, 10, "REPORTE EJECUTIVO - CAJA CHICA", 0, 1, "C")
     pdf.set_font("Arial", "I", 12)
+    pdf.set_text_color(100, 100, 100)
     pdf.cell(0, 10, f"Fecha de Generacion: {datetime.now().strftime('%d/%m/%Y %H:%M')}", 0, 1, "C")
-    pdf.ln(10)
+    pdf.ln(5)
     
-    # Métricas principales
-    pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, "RESUMEN EJECUTIVO", 0, 1, "L")
+    # Métricas principales en cajas
+    pdf.set_font("Arial", "B", 12)
+    pdf.set_fill_color(200, 220, 255)
     
-    pdf.set_font("Arial", "", 12)
-    pdf.cell(95, 10, f"Saldo Inicial: ${saldo_inicial:,.2f}", 1, 0, "C")
-    pdf.cell(95, 10, f"Saldo Actual: ${saldo_actual:,.2f}", 1, 1, "C")
+    # Fila 1: Saldo Inicial y Saldo Actual
+    pdf.cell(95, 15, f"SALDO INICIAL", 1, 0, "C", 1)
+    pdf.cell(95, 15, f"SALDO ACTUAL", 1, 1, "C", 1)
+    
+    pdf.set_font("Arial", "", 14)
+    pdf.cell(95, 15, f"${saldo_inicial:,.2f}", 1, 0, "C")
+    pdf.cell(95, 15, f"${saldo_actual:,.2f}", 1, 1, "C")
+    
+    pdf.ln(5)
     
     # Ingresos y Egresos
     cursor.execute("SELECT SUM(monto) FROM movimientos WHERE tipo='Ingreso'")
@@ -327,14 +353,21 @@ def generar_pdf_dashboard(conn):
     cursor.execute("SELECT SUM(monto) FROM movimientos WHERE tipo='Egreso'")
     egresos = cursor.fetchone()[0] or 0.0
     
-    pdf.cell(95, 10, f"Total Ingresos: ${ingresos:,.2f}", 1, 0, "C")
-    pdf.cell(95, 10, f"Total Egresos: ${egresos:,.2f}", 1, 1, "C")
+    pdf.cell(95, 15, f"TOTAL INGRESOS", 1, 0, "C", 1)
+    pdf.cell(95, 15, f"TOTAL EGRESOS", 1, 1, "C", 1)
+    
+    pdf.set_text_color(0, 150, 0)
+    pdf.cell(95, 15, f"${ingresos:,.2f}", 1, 0, "C")
+    pdf.set_text_color(200, 0, 0)
+    pdf.cell(95, 15, f"${egresos:,.2f}", 1, 1, "C")
+    pdf.set_text_color(0, 0, 0)
     
     pdf.ln(10)
     
-    # Top Centros de Costo
+    # Gráfico de Distribución de Gastos (Donut Chart)
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, "TOP 5 CENTROS DE COSTO", 0, 1, "L")
+    pdf.set_text_color(0, 100, 200)
+    pdf.cell(0, 10, "DISTRIBUCION DE GASTOS POR CENTRO DE COSTO", 0, 1, "L")
     
     cursor.execute('''
         SELECT cc.nombre, SUM(m.monto) as total 
@@ -343,53 +376,136 @@ def generar_pdf_dashboard(conn):
         WHERE m.tipo = 'Egreso' 
         GROUP BY cc.nombre
         ORDER BY total DESC
-        LIMIT 5
     ''')
-    
     resultados = cursor.fetchall()
     
-    pdf.set_font("Arial", "", 11)
-    for i, row in enumerate(resultados, 1):
-        pdf.cell(10, 8, f"{i}.", 0, 0)
-        pdf.cell(100, 8, row['nombre'][:40], 0, 0)
-        pdf.cell(80, 8, f"${row['total']:,.2f}", 0, 1, "R")
+    if resultados:
+        # Crear gráfico de donut con matplotlib
+        fig, ax = plt.figure(figsize=(8, 4)), plt.gca()
+        nombres = [row['nombre'][:20] for row in resultados]
+        totales = [row['total'] for row in resultados]
+        
+        colors = plt.cm.Set3(range(len(nombres)))
+        wedges, texts, autotexts = ax.pie(totales, labels=nombres, autopct='%1.1f%%', 
+                                          colors=colors, startangle=90, pctdistance=0.85)
+        
+        # Draw circle for donut
+        centre_circle = plt.Circle((0,0),0.70,fc='white')
+        fig.gca().add_artist(centre_circle)
+        
+        plt.title('Distribución de Gastos', fontsize=12, fontweight='bold', pad=20)
+        plt.tight_layout()
+        
+        # Guardar gráfico como imagen
+        img_path = "temp_donut.png"
+        plt.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.close()
+        
+        # Agregar imagen al PDF
+        pdf.image(img_path, x=10, y=pdf.get_y(), w=190)
+        pdf.ln(95)
+        
+        # Limpiar archivo temporal
+        if os.path.exists(img_path):
+            os.remove(img_path)
     
-    pdf.ln(10)
+    pdf.ln(5)
     
-    # Últimos movimientos
+    # Gráfico de Flujo de Caja Diario
     pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, "ULTIMOS MOVIMIENTOS", 0, 1, "L")
+    pdf.set_text_color(0, 100, 200)
+    pdf.cell(0, 10, "FLUJO DE CAJA DIARIO", 0, 1, "L")
     
     cursor.execute('''
-        SELECT m.fecha, m.tipo, cc.nombre, m.concepto, m.monto 
-        FROM movimientos m
-        LEFT JOIN centros_costo cc ON m.centro_costo_id = cc.id
-        ORDER BY m.fecha DESC, m.id DESC
+        SELECT fecha, tipo, SUM(monto) as total 
+        FROM movimientos 
+        GROUP BY fecha, tipo 
+        ORDER BY fecha
         LIMIT 10
     ''')
+    resultados_flujo = cursor.fetchall()
     
-    movimientos = cursor.fetchall()
-    
-    pdf.set_font("Arial", "", 9)
-    for mov in movimientos:
-        fecha = mov['fecha'] if mov['fecha'] else 'N/A'
-        tipo = mov['tipo'][:3]
-        centro = mov['nombre'][:30] if mov['nombre'] else 'N/A'
-        concepto = mov['concepto'][:50] if mov['concepto'] else 'N/A'
-        monto = mov['monto']
+    if resultados_flujo:
+        df_flujo = pd.DataFrame(resultados_flujo, columns=['fecha', 'tipo', 'total'])
         
-        pdf.cell(25, 6, str(fecha), 0, 0)
-        pdf.cell(20, 6, tipo, 0, 0)
-        pdf.cell(60, 6, centro, 0, 0)
-        pdf.cell(65, 6, concepto, 0, 0)
-        pdf.cell(20, 6, f"${monto:,.2f}", 0, 1, "R")
+        # Crear gráfico de barras
+        fig, ax = plt.figure(figsize=(10, 4)), plt.gca()
+        
+        fechas = df_flujo['fecha'].unique()
+        ingresos_data = [df_flujo[(df_flujo['fecha']==f) & (df_flujo['tipo']=='Ingreso')]['total'].sum() for f in fechas]
+        egresos_data = [df_flujo[(df_flujo['fecha']==f) & (df_flujo['tipo']=='Egreso')]['total'].sum() for f in fechas]
+        
+        x = range(len(fechas))
+        width = 0.35
+        
+        ax.bar(x, ingresos_data, width, label='Ingresos', color='#38ef7d')
+        ax.bar([i + width for i in x], egresos_data, width, label='Egresos', color='#eb3349')
+        
+        ax.set_xlabel('Fecha')
+        ax.set_ylabel('Monto ($)')
+        ax.set_title('Flujo de Caja Diario')
+        ax.set_xticks([i + width/2 for i in x])
+        ax.set_xticklabels([str(f) for f in fechas], rotation=45, ha='right')
+        ax.legend()
+        
+        plt.tight_layout()
+        
+        # Guardar gráfico
+        img_path = "temp_bars.png"
+        plt.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.close()
+        
+        # Agregar al PDF
+        pdf.image(img_path, x=10, y=pdf.get_y(), w=190)
+        pdf.ln(95)
+        
+        if os.path.exists(img_path):
+            os.remove(img_path)
+    
+    # Tabla Resumen por Centro de Costo
+    pdf.set_font("Arial", "B", 14)
+    pdf.set_text_color(0, 100, 200)
+    pdf.cell(0, 10, "RESUMEN POR CENTRO DE COSTO", 0, 1, "L")
+    
+    cursor.execute('''
+        SELECT cc.codigo, cc.nombre, 
+               COUNT(m.id) as num_movimientos,
+               SUM(CASE WHEN m.tipo='Egreso' THEN m.monto ELSE 0 END) as total_egresos,
+               SUM(CASE WHEN m.tipo='Ingreso' THEN m.monto ELSE 0 END) as total_ingresos
+        FROM centros_costo cc
+        LEFT JOIN movimientos m ON cc.id = m.centro_costo_id
+        GROUP BY cc.id, cc.codigo, cc.nombre
+        ORDER BY total_egresos DESC
+        LIMIT 10
+    ''')
+    resultados_resumen = cursor.fetchall()
+    
+    if resultados_resumen:
+        # Headers
+        pdf.set_font("Arial", "B", 9)
+        pdf.set_fill_color(200, 220, 255)
+        pdf.cell(20, 8, "Codigo", 1, 0, "C", 1)
+        pdf.cell(60, 8, "Centro de Costo", 1, 0, "C", 1)
+        pdf.cell(25, 8, "Movimientos", 1, 0, "C", 1)
+        pdf.cell(40, 8, "Total Egresos", 1, 0, "C", 1)
+        pdf.cell(40, 8, "Total Ingresos", 1, 1, "C", 1)
+        
+        # Data
+        pdf.set_font("Arial", "", 8)
+        for row in resultados_resumen:
+            pdf.cell(20, 7, str(row['codigo']), 1, 0, "C")
+            pdf.cell(60, 7, row['nombre'][:30], 1, 0, "L")
+            pdf.cell(25, 7, str(row['num_movimientos']), 1, 0, "C")
+            pdf.cell(40, 7, f"${row['total_egresos']:,.2f}", 1, 0, "R")
+            pdf.cell(40, 7, f"${row['total_ingresos']:,.2f}", 1, 1, "R")
     
     # Footer
     pdf.set_y(-20)
     pdf.set_font("Arial", "I", 8)
+    pdf.set_text_color(100, 100, 100)
     pdf.cell(0, 10, "Reporte generado automaticamente - Sistema Caja Chica Enterprise", 0, 0, "C")
     
-    # Guardar PDF en memoria
+    # Guardar PDF
     nombre_archivo = f"reporte_dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
     pdf_bytes = pdf.output(dest='S')
     if isinstance(pdf_bytes, str):
@@ -515,22 +631,13 @@ def vista_dashboard(conn):
     if saldo_actual < alerta_min:
         st.error(f"⚠️ **ALERTA CRÍTICA**: El saldo actual (${saldo_actual:,.2f}) ha caído por debajo del mínimo configurado (${alerta_min:,.2f}). Se requiere reposición inmediata.")
     
-    st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
+    st.markdown("---")
     
-    # ==========================================
-    # SECCIÓN DE GRÁFICOS - ESTILO PROFESIONAL
-    # ==========================================
+    # Gráficos
     col_g1, col_g2 = st.columns(2)
     
     with col_g1:
-        # Título con icono
-        st.markdown("""
-        <div class='section-title'>
-            <span class='section-icon'>📊</span>
-            <span>Distribución de Gastos por Centro de Costo</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
+        st.subheader("📊 Distribución de Gastos por Centro de Costo")
         cursor.execute('''
             SELECT cc.nombre as centro, SUM(m.monto) as total 
             FROM movimientos m 
@@ -542,44 +649,20 @@ def vista_dashboard(conn):
         
         if resultados:
             df_gastos = pd.DataFrame(resultados, columns=['centro', 'total'])
-            
-            # Crear gráfico de dona profesional
-            fig_pie = px.pie(
-                df_gastos, 
-                values='total', 
-                names='centro', 
-                hole=0.6,  # Dona más grande
-                color_discrete_sequence=['#4ECDC4']  # Color cyan/turquesa
-            )
-            
-            fig_pie.update_traces(
-                textposition='inside', 
-                textinfo='percent+label',
-                marker=dict(line=dict(color='#0f0c29', width=2))
-            )
-            
+            fig_pie = px.pie(df_gastos, values='total', names='centro', hole=0.4, 
+                           color_discrete_sequence=px.colors.qualitative.Pastel)
+            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
             fig_pie.update_layout(
                 paper_bgcolor='rgba(0,0,0,0)',
                 plot_bgcolor='rgba(0,0,0,0)',
-                font=dict(color='#e0e0e0', size=11),
-                height=400,
-                margin=dict(t=0, b=0, l=0, r=0),
-                showlegend=False
+                font=dict(color='#e0e0e0')
             )
-            
             st.plotly_chart(fig_pie, use_container_width=True)
         else:
             st.info("Sin datos de egresos para mostrar.")
     
     with col_g2:
-        # Título con icono
-        st.markdown("""
-        <div class='section-title'>
-            <span class='section-icon'>📈</span>
-            <span>Flujo de Caja Diario</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
+        st.subheader("📈 Flujo de Caja Diario")
         cursor.execute('''
             SELECT fecha, tipo, SUM(monto) as total 
             FROM movimientos 
@@ -593,27 +676,12 @@ def vista_dashboard(conn):
             df_flujo_pivot = df_flujo.pivot(index='fecha', columns='tipo', values='total').fillna(0)
             
             fig_bar = go.Figure()
-            
-            # Ingresos - Verde brillante
             if 'Ingreso' in df_flujo_pivot.columns:
-                fig_bar.add_trace(go.Bar(
-                    x=df_flujo_pivot.index, 
-                    y=df_flujo_pivot['Ingreso'], 
-                    name='Ingresos', 
-                    marker_color='#4ade80',  # Verde brillante
-                    hovertemplate='<b>%{x}</b><br>Ingresos: $%{y:,.2f}<extra></extra>'
-                ))
-            
-            # Egresos - Rojo
+                fig_bar.add_trace(go.Bar(x=df_flujo_pivot.index, y=df_flujo_pivot['Ingreso'], 
+                                        name='Ingresos', marker_color='#38ef7d'))
             if 'Egreso' in df_flujo_pivot.columns:
-                fig_bar.add_trace(go.Bar(
-                    x=df_flujo_pivot.index, 
-                    y=df_flujo_pivot['Egreso'], 
-                    name='Egresos', 
-                    marker_color='#f87171',  # Rojo
-                    hovertemplate='<b>%{x}</b><br>Egresos: $%{y:,.2f}<extra></extra>'
-                ))
-            
+                fig_bar.add_trace(go.Bar(x=df_flujo_pivot.index, y=df_flujo_pivot['Egreso'], 
+                                         name='Egresos', marker_color='#eb3349'))
             fig_bar.update_layout(
                 barmode='group', 
                 xaxis_title="Fecha", 
@@ -621,40 +689,14 @@ def vista_dashboard(conn):
                 plot_bgcolor='rgba(0,0,0,0)', 
                 paper_bgcolor='rgba(0,0,0,0)',
                 font=dict(color='#e0e0e0'),
-                legend=dict(
-                    orientation="h", 
-                    y=1.05,
-                    x=0,
-                    font=dict(color='#e0e0e0')
-                ),
-                height=400,
-                margin=dict(t=0, b=0, l=0, r=0),
-                xaxis=dict(
-                    tickangle=45,
-                    tickfont=dict(size=10, color='#e0e0e0')
-                ),
-                yaxis=dict(
-                    tickfont=dict(size=10, color='#e0e0e0'),
-                    tickformat=',.0f'
-                ),
-                hovermode='x unified'
+                legend=dict(font=dict(color='#e0e0e0'))
             )
-            
             st.plotly_chart(fig_bar, use_container_width=True)
         else:
             st.info("Sin datos de flujo para mostrar.")
     
-    st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
-    
-    # ==========================================
-    # TABLA RESUMEN - ESTILO PROFESIONAL
-    # ==========================================
-    st.markdown("""
-    <div class='section-title'>
-        <span class='section-icon'>📋</span>
-        <span>Resumen por Centro de Costo</span>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("---")
+    st.subheader("📋 Resumen por Centro de Costo")
     
     cursor.execute('''
         SELECT cc.codigo, cc.nombre, 
@@ -672,41 +714,10 @@ def vista_dashboard(conn):
         df_resumen = pd.DataFrame(resultados_resumen, 
                                   columns=['Código', 'Centro de Costo', 'Movimientos', 
                                          'Total Egresos', 'Total Ingresos'])
-        
-        # Formatear la tabla con estilo profesional
-        styled_table = df_resumen.style.format({
+        st.dataframe(df_resumen.style.format({
             'Total Egresos': '${:,.2f}',
             'Total Ingresos': '${:,.2f}'
-        }).set_properties(**{
-            'background-color': 'rgba(15, 23, 42, 0.6)',
-            'color': '#e0e0e0',
-            'border': '1px solid rgba(0, 212, 255, 0.1)',
-            'padding': '12px'
-        }).set_table_styles([
-            {
-                'selector': 'th',
-                'props': [
-                    ('background-color', 'rgba(0, 212, 255, 0.2)'),
-                    ('color', '#00d4ff'),
-                    ('font-weight', 'bold'),
-                    ('text-align', 'left'),
-                    ('padding', '12px')
-                ]
-            },
-            {
-                'selector': 'td',
-                'props': [
-                    ('text-align', 'left'),
-                    ('padding', '12px')
-                ]
-            }
-        ])
-        
-        st.dataframe(styled_table, use_container_width=True, height=400)
-    else:
-        st.info("No hay datos de centros de costo para mostrar.")
-
-# ... (El resto del código permanece igual - funciones vista_centros_costo, vista_registro, etc.)
+        }), use_container_width=True)
 
 def vista_centros_costo(conn):
     st.title("🏢 Gestión de Centros de Costo")
@@ -903,78 +914,166 @@ def vista_registro(conn):
 def vista_historial(conn):
     st.title("📜 Historial y Auditoría")
     
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT m.id, m.fecha, m.tipo, cc.codigo || ' - ' || cc.nombre as centro, 
-               m.concepto, m.solicitante, 
-               CASE WHEN m.tiene_factura = 1 THEN 'Sí' ELSE 'No' END as tiene_factura,
-               m.no_factura, m.monto 
-        FROM movimientos m
-        LEFT JOIN centros_costo cc ON m.centro_costo_id = cc.id
-        ORDER BY m.fecha DESC, m.id DESC
-    ''')
-    resultados = cursor.fetchall()
+    # Tabs para ver y editar/eliminar
+    tab_ver, tab_editar = st.tabs(["👁️ Ver Movimientos", "✏️ Editar/Eliminar Movimientos"])
     
-    if resultados:
-        df = pd.DataFrame(resultados, 
-                          columns=['ID', 'Fecha', 'Tipo', 'Centro de Costo', 
-                                 'Concepto', 'Solicitante', '¿Factura?', 
-                                 'No. Factura', 'Monto'])
+    with tab_ver:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT m.id, m.fecha, m.tipo, cc.codigo || ' - ' || cc.nombre as centro, 
+                   m.concepto, m.solicitante, 
+                   CASE WHEN m.tiene_factura = 1 THEN 'Sí' ELSE 'No' END as tiene_factura,
+                   m.no_factura, m.monto 
+            FROM movimientos m
+            LEFT JOIN centros_costo cc ON m.centro_costo_id = cc.id
+            ORDER BY m.fecha DESC, m.id DESC
+        ''')
+        resultados = cursor.fetchall()
         
-        # Filtros
-        with st.expander("🔍 Filtros Avanzados", expanded=False):
-            col_f1, col_f2, col_f3 = st.columns(3)
-            with col_f1:
-                tipo_filtro = st.multiselect("Filtrar por Tipo", df['Tipo'].unique(), default=df['Tipo'].unique())
-            with col_f2:
-                centro_filtro = st.multiselect("Filtrar por Centro", df['Centro de Costo'].unique(), default=df['Centro de Costo'].unique())
-            with col_f3:
-                factura_filtro = st.multiselect("¿Tiene Factura?", df['¿Factura?'].unique(), default=df['¿Factura?'].unique())
+        if resultados:
+            df = pd.DataFrame(resultados, 
+                              columns=['ID', 'Fecha', 'Tipo', 'Centro de Costo', 
+                                     'Concepto', 'Solicitante', '¿Factura?', 
+                                     'No. Factura', 'Monto'])
             
-            col_f4, col_f5 = st.columns(2)
-            with col_f4:
-                fecha_inicio = st.date_input("Desde", value=None)
-            with col_f5:
-                fecha_fin = st.date_input("Hasta", value=None)
-            
-        df_filtrado = df[
-            df['Tipo'].isin(tipo_filtro) & 
-            df['Centro de Costo'].isin(centro_filtro) &
-            df['¿Factura?'].isin(factura_filtro)
-        ]
-        
-        # Filtro por fechas
-        if fecha_inicio and fecha_fin:
-            df_filtrado['Fecha'] = pd.to_datetime(df_filtrado['Fecha'])
-            df_filtrado = df_filtrado[
-                (df_filtrado['Fecha'] >= pd.Timestamp(fecha_inicio)) & 
-                (df_filtrado['Fecha'] <= pd.Timestamp(fecha_fin))
+            # Filtros
+            with st.expander("🔍 Filtros Avanzados", expanded=False):
+                col_f1, col_f2, col_f3 = st.columns(3)
+                with col_f1:
+                    tipo_filtro = st.multiselect("Filtrar por Tipo", df['Tipo'].unique(), default=df['Tipo'].unique())
+                with col_f2:
+                    centro_filtro = st.multiselect("Filtrar por Centro", df['Centro de Costo'].unique(), default=df['Centro de Costo'].unique())
+                with col_f3:
+                    factura_filtro = st.multiselect("¿Tiene Factura?", df['¿Factura?'].unique(), default=df['¿Factura?'].unique())
+                
+                col_f4, col_f5 = st.columns(2)
+                with col_f4:
+                    fecha_inicio = st.date_input("Desde", value=None)
+                with col_f5:
+                    fecha_fin = st.date_input("Hasta", value=None)
+                
+            df_filtrado = df[
+                df['Tipo'].isin(tipo_filtro) & 
+                df['Centro de Costo'].isin(centro_filtro) &
+                df['¿Factura?'].isin(factura_filtro)
             ]
+            
+            # Filtro por fechas
+            if fecha_inicio and fecha_fin:
+                df_filtrado['Fecha'] = pd.to_datetime(df_filtrado['Fecha'])
+                df_filtrado = df_filtrado[
+                    (df_filtrado['Fecha'] >= pd.Timestamp(fecha_inicio)) & 
+                    (df_filtrado['Fecha'] <= pd.Timestamp(fecha_fin))
+                ]
+            
+            # Mostrar tabla
+            st.dataframe(
+                df_filtrado.style.format({"Monto": "${:,.2f}"}),
+                use_container_width=True,
+                height=500
+            )
+            
+            # Estadísticas
+            col_s1, col_s2, col_s3 = st.columns(3)
+            col_s1.metric("📊 Total Registros", len(df_filtrado))
+            col_s2.metric("💰 Monto Total", f"${df_filtrado['Monto'].sum():,.2f}")
+            col_s3.metric("📈 Promedio", f"${df_filtrado['Monto'].mean():,.2f}")
+            
+            # Exportación
+            csv = df_filtrado.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+            st.download_button(
+                label="📥 Exportar Reporte a CSV",
+                data=csv,
+                file_name=f'reporte_caja_chica_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv',
+                mime='text/csv',
+                use_container_width=True
+            )
+        else:
+            st.info("No hay movimientos registrados en el sistema.")
+    
+    with tab_editar:
+        st.subheader("✏️ Modificar o Eliminar Movimientos")
         
-        # Mostrar tabla SIN background_gradient (evita error de matplotlib)
-        st.dataframe(
-            df_filtrado.style.format({"Monto": "${:,.2f}"}),
-            use_container_width=True,
-            height=500
-        )
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT m.id, m.fecha, m.tipo, m.centro_costo_id, cc.nombre as centro_nombre,
+                   m.concepto, m.tiene_factura, m.no_factura, m.solicitante, m.monto
+            FROM movimientos m
+            LEFT JOIN centros_costo cc ON m.centro_costo_id = cc.id
+            ORDER BY m.fecha DESC, m.id DESC
+        ''')
+        movimientos = cursor.fetchall()
         
-        # Estadísticas
-        col_s1, col_s2, col_s3 = st.columns(3)
-        col_s1.metric("📊 Total Registros", len(df_filtrado))
-        col_s2.metric("💰 Monto Total", f"${df_filtrado['Monto'].sum():,.2f}")
-        col_s3.metric("📈 Promedio", f"${df_filtrado['Monto'].mean():,.2f}")
-        
-        # Exportación
-        csv = df_filtrado.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        st.download_button(
-            label="📥 Exportar Reporte a CSV",
-            data=csv,
-            file_name=f'reporte_caja_chica_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv',
-            mime='text/csv',
-            use_container_width=True
-        )
-    else:
-        st.info("No hay movimientos registrados en el sistema.")
+        if movimientos:
+            # Selector de movimiento
+            opciones = {f"{m['id']} - {m['fecha']} - {m['concepto'][:30]} ({m['monto']:,.2f})": m for m in movimientos}
+            movimiento_seleccionado = st.selectbox("Seleccionar Movimiento", list(opciones.keys()))
+            
+            if movimiento_seleccionado:
+                mov_data = opciones[movimiento_seleccionado]
+                
+                # Cargar centros de costo
+                cursor.execute("SELECT id, codigo, nombre FROM centros_costo WHERE activo = 1 ORDER BY codigo")
+                centros = cursor.fetchall()
+                opciones_centros = {f"{c['codigo']} - {c['nombre']}": c['id'] for c in centros}
+                
+                # Encontrar el centro actual
+                centro_actual = None
+                for label, id_cc in opciones_centros.items():
+                    if id_cc == mov_data['centro_costo_id']:
+                        centro_actual = label
+                        break
+                
+                with st.form("form_editar_movimiento"):
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        nueva_fecha = st.date_input("Fecha", value=mov_data['fecha'])
+                        nuevo_tipo = st.radio("Tipo", ["Egreso", "Ingreso"], index=0 if mov_data['tipo']=="Egreso" else 1, horizontal=True)
+                        nuevo_centro = st.selectbox("Centro de Costo", list(opciones_centros.keys()), 
+                                                   index=list(opciones_centros.keys()).index(centro_actual) if centro_actual else 0)
+                        nuevo_solicitante = st.text_input("Solicitante", value=mov_data['solicitante'])
+                    
+                    with col2:
+                        nuevo_concepto = st.text_area("Concepto", value=mov_data['concepto'], height=80)
+                        nueva_factura = st.checkbox("¿Tiene Factura?", value=bool(mov_data['tiene_factura']))
+                        nuevo_no_factura = st.text_input("No. Factura", value=mov_data['no_factura'] or "")
+                        nuevo_monto = st.number_input("Monto ($)", min_value=0.01, value=float(mov_data['monto']), step=0.01)
+                    
+                    col_btn1, col_btn2 = st.columns(2)
+                    with col_btn1:
+                        btn_actualizar = st.form_submit_button("💾 Actualizar Movimiento", type="primary", use_container_width=True)
+                    with col_btn2:
+                        btn_eliminar = st.form_submit_button("🗑️ Eliminar Movimiento", type="secondary", use_container_width=True)
+                    
+                    if btn_actualizar:
+                        datos = {
+                            'fecha': nueva_fecha,
+                            'tipo': nuevo_tipo,
+                            'centro_costo_id': opciones_centros[nuevo_centro],
+                            'concepto': nuevo_concepto,
+                            'tiene_factura': 1 if nueva_factura else 0,
+                            'no_factura': nuevo_no_factura if nueva_factura else None,
+                            'solicitante': nuevo_solicitante,
+                            'monto': nuevo_monto
+                        }
+                        exito, msg = actualizar_movimiento(conn, mov_data['id'], datos)
+                        if exito:
+                            st.success(f"✅ {msg}")
+                            st.rerun()
+                        else:
+                            st.error(f"❌ {msg}")
+                    
+                    if btn_eliminar:
+                        st.warning("⚠️ ¿Está seguro de eliminar este movimiento? Esta acción no se puede deshacer.")
+                        if st.button("🗑️ Confirmar Eliminación", type="secondary"):
+                            exito, msg = eliminar_movimiento(conn, mov_data['id'])
+                            if exito:
+                                st.success(f"✅ {msg}")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ {msg}")
+        else:
+            st.info("No hay movimientos registrados para editar.")
 
 def vista_calendario(conn):
     st.title("📅 Calendario de Movimientos")
@@ -1143,15 +1242,16 @@ def vista_reportes(conn):
             <p style='color: rgba(255,255,255,0.8);'>Reporte completo con:</p>
             <ul style='color: rgba(255,255,255,0.8);'>
                 <li>Resumen ejecutivo</li>
-                <li>Top 5 centros de costo</li>
-                <li>Últimos movimientos</li>
+                <li>Gráficos de distribución y flujo</li>
+                <li>Top centros de costo</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
         
         if st.button("📥 Generar Dashboard PDF", use_container_width=True, type="primary"):
             try:
-                nombre_archivo, pdf_bytes = generar_pdf_dashboard(conn)
+                with st.spinner("Generando reporte PDF..."):
+                    nombre_archivo, pdf_bytes = generar_pdf_dashboard(conn)
                 st.download_button(
                     label="⬇️ Descargar Reporte PDF",
                     data=pdf_bytes,
@@ -1162,6 +1262,8 @@ def vista_reportes(conn):
                 st.success("✅ PDF generado exitosamente. Haz clic en el botón de descarga.")
             except Exception as e:
                 st.error(f"Error al generar PDF: {str(e)}")
+                import traceback
+                st.code(traceback.format_exc())
     
     with col2:
         st.markdown("""

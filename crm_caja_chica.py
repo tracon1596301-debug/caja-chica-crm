@@ -283,7 +283,7 @@ def eliminar_movimiento(conn, id_movimiento):
         return False, f"Error al eliminar: {str(e)}"
 
 # ==========================================
-# GENERACIÓN DE PDF PROFESIONAL
+# GENERACIÓN DE PDF PROFESIONAL - VERSIÓN MEJORADA
 # ==========================================
 def generar_pdf_dashboard(conn):
     """Genera un PDF profesional con tablas centradas y gráficos bien alineados"""
@@ -325,35 +325,35 @@ def generar_pdf_dashboard(conn):
     pdf.set_font('Arial', 'I', 10)
     pdf.cell(0, 6, f'Fecha de Generacion: {datetime.now().strftime("%d/%m/%Y %H:%M")}', 0, 1, 'C')
     
-    pdf.ln(10)
+    pdf.ln(8)  # Reducido de 10 a 8
     
     # ==========================================
     # SECCIÓN 1: RESUMEN EJECUTIVO (KPIs)
     # ==========================================
     pdf.set_font('Arial', 'B', 14)
     pdf.set_text_color(*color_primario)
-    pdf.cell(0, 10, 'RESUMEN EJECUTIVO', 0, 1, 'L')
+    pdf.cell(0, 8, 'RESUMEN EJECUTIVO', 0, 1, 'L')  # Reducido de 10 a 8
     
     # Línea decorativa
     pdf.set_draw_color(*color_secundario)
     pdf.set_line_width(0.5)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(5)
+    pdf.ln(3)  # Reducido de 5 a 3
     
     # KPIs en formato de tabla con fondo
-    ancho_celda = 45
-    alto_celda = 20
+    ancho_celda = 46  # Ajustado para que quepan 4 columnas
+    alto_celda = 18   # Reducido de 20 a 18
     
     # Fila 1: Saldo Inicial y Saldo Actual
-    pdf.set_font('Arial', 'B', 9)
+    pdf.set_font('Arial', 'B', 8)  # Reducido de 9 a 8
     pdf.set_fill_color(230, 240, 255)
     
-    pdf.cell(ancho_celda, 8, 'SALDO INICIAL', 1, 0, 'C', 1)
-    pdf.cell(ancho_celda, 8, 'SALDO ACTUAL', 1, 0, 'C', 1)
-    pdf.cell(ancho_celda, 8, 'TOTAL INGRESOS', 1, 0, 'C', 1)
-    pdf.cell(ancho_celda, 8, 'TOTAL EGRESOS', 1, 1, 'C', 1)
+    pdf.cell(ancho_celda, 7, 'SALDO INICIAL', 1, 0, 'C', 1)   # Reducido de 8 a 7
+    pdf.cell(ancho_celda, 7, 'SALDO ACTUAL', 1, 0, 'C', 1)
+    pdf.cell(ancho_celda, 7, 'TOTAL INGRESOS', 1, 0, 'C', 1)
+    pdf.cell(ancho_celda, 7, 'TOTAL EGRESOS', 1, 1, 'C', 1)
     
-    pdf.set_font('Arial', 'B', 11)
+    pdf.set_font('Arial', 'B', 10)  # Reducido de 11 a 10
     pdf.set_text_color(0, 0, 0)
     
     pdf.cell(ancho_celda, alto_celda, f'${saldo_inicial:,.2f}', 1, 0, 'C')
@@ -365,18 +365,22 @@ def generar_pdf_dashboard(conn):
     pdf.set_text_color(*color_rojo)
     pdf.cell(ancho_celda, alto_celda, f'${egresos:,.2f}', 1, 1, 'C')
     
-    pdf.ln(8)
+    pdf.ln(5)  # Reducido de 8 a 5
     
     # ==========================================
     # SECCIÓN 2: GRÁFICO DE DISTRIBUCIÓN
     # ==========================================
-    pdf.set_font('Arial', 'B', 14)
+    # Verificar si hay espacio suficiente, si no, nueva página
+    if pdf.get_y() > 120:
+        pdf.add_page()
+    
+    pdf.set_font('Arial', 'B', 13)  # Reducido de 14 a 13
     pdf.set_text_color(*color_primario)
-    pdf.cell(0, 10, 'DISTRIBUCION DE GASTOS POR CENTRO DE COSTO', 0, 1, 'L')
+    pdf.cell(0, 8, 'DISTRIBUCION DE GASTOS POR CENTRO DE COSTO', 0, 1, 'L')
     
     pdf.set_draw_color(*color_secundario)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(5)
+    pdf.ln(3)
     
     cursor.execute('''
         SELECT cc.nombre, SUM(m.monto) as total 
@@ -390,10 +394,10 @@ def generar_pdf_dashboard(conn):
     resultados = cursor.fetchall()
     
     if resultados:
-        # Crear gráfico con matplotlib
-        fig, ax = plt.subplots(figsize=(10, 5))
+        # Crear gráfico más compacto
+        fig, ax = plt.subplots(figsize=(8, 4))  # Reducido de (10, 5) a (8, 4)
         
-        nombres = [row['nombre'][:20] for row in resultados]
+        nombres = [row['nombre'][:18] for row in resultados]  # Reducido de 20 a 18 caracteres
         totales = [row['total'] for row in resultados]
         
         colors = plt.cm.Set3(range(len(nombres)))
@@ -401,26 +405,27 @@ def generar_pdf_dashboard(conn):
         wedges, texts, autotexts = ax.pie(
             totales, 
             labels=nombres, 
-            autopct='%1.1f%%',
+            autopct='%1.0f%%',  # Cambiado a 0 decimales
             colors=colors,
             startangle=90,
-            pctdistance=0.85
+            pctdistance=0.85,
+            textprops={'fontsize': 7}  # Reducido tamaño de fuente
         )
         
         # Hacer el centro blanco para efecto dona
         centre_circle = plt.Circle((0,0), 0.70, fc='white')
         ax.add_artist(centre_circle)
         
-        ax.set_title('Distribucion de Gastos', fontsize=14, fontweight='bold', pad=20)
-        plt.tight_layout()
+        ax.set_title('Distribucion de Gastos', fontsize=12, fontweight='bold', pad=10)  # Reducido
+        plt.tight_layout(pad=0.5)  # Reducido padding
         
         # Guardar gráfico temporalmente
         img_path = "temp_donut.png"
-        plt.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.savefig(img_path, dpi=150, bbox_inches='tight', pad_inches=0.1)  # Añadido pad_inches
         plt.close()
         
         # Insertar imagen centrada
-        img_width = 160
+        img_width = 140  # Reducido de 160 a 140
         x_pos = (210 - img_width) / 2
         pdf.image(img_path, x=x_pos, w=img_width)
         
@@ -428,24 +433,26 @@ def generar_pdf_dashboard(conn):
         if os.path.exists(img_path):
             os.remove(img_path)
     else:
-        pdf.set_font('Arial', 'I', 10)
+        pdf.set_font('Arial', 'I', 9)
         pdf.set_text_color(100, 100, 100)
-        pdf.cell(0, 10, 'Sin datos de egresos para mostrar', 0, 1, 'C')
+        pdf.cell(0, 8, 'Sin datos de egresos para mostrar', 0, 1, 'C')
     
-    pdf.ln(5)
+    pdf.ln(3)  # Reducido de 5 a 3
     
     # ==========================================
     # SECCIÓN 3: GRÁFICO DE FLUJO DE CAJA
     # ==========================================
-    pdf.add_page()
+    # Verificar espacio
+    if pdf.get_y() > 100:
+        pdf.add_page()
     
-    pdf.set_font('Arial', 'B', 14)
+    pdf.set_font('Arial', 'B', 13)
     pdf.set_text_color(*color_primario)
-    pdf.cell(0, 10, 'FLUJO DE CAJA DIARIO', 0, 1, 'L')
+    pdf.cell(0, 8, 'FLUJO DE CAJA DIARIO', 0, 1, 'L')
     
     pdf.set_draw_color(*color_secundario)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(5)
+    pdf.ln(3)
     
     cursor.execute('''
         SELECT fecha, tipo, SUM(monto) as total 
@@ -459,7 +466,7 @@ def generar_pdf_dashboard(conn):
     if resultados_flujo:
         df_flujo = pd.DataFrame(resultados_flujo, columns=['fecha', 'tipo', 'total'])
         
-        fig, ax = plt.subplots(figsize=(12, 5))
+        fig, ax = plt.subplots(figsize=(10, 4))  # Reducido de (12, 5) a (10, 4)
         
         fechas = df_flujo['fecha'].unique()
         ingresos_data = [df_flujo[(df_flujo['fecha']==f) & (df_flujo['tipo']=='Ingreso')]['total'].sum() for f in fechas]
@@ -471,42 +478,46 @@ def generar_pdf_dashboard(conn):
         ax.bar([i - width/2 for i in x], ingresos_data, width, label='Ingresos', color='#10b981')
         ax.bar([i + width/2 for i in x], egresos_data, width, label='Egresos', color='#ef4444')
         
-        ax.set_xlabel('Fecha', fontsize=10)
-        ax.set_ylabel('Monto ($)', fontsize=10)
-        ax.set_title('Flujo de Caja Diario', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Fecha', fontsize=8)  # Reducido
+        ax.set_ylabel('Monto ($)', fontsize=8)
+        ax.set_title('Flujo de Caja Diario', fontsize=11, fontweight='bold')  # Reducido
         ax.set_xticks(x)
-        ax.set_xticklabels([str(f) for f in fechas], rotation=45, ha='right')
-        ax.legend()
+        ax.set_xticklabels([str(f)[-5:] for f in fechas], rotation=45, ha='right', fontsize=7)  # Solo día y mes
+        ax.legend(fontsize=8)
         
-        plt.tight_layout()
+        plt.tight_layout(pad=0.5)
         
         img_path = "temp_bars.png"
-        plt.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.savefig(img_path, dpi=150, bbox_inches='tight', pad_inches=0.1)
         plt.close()
         
-        img_width = 180
+        img_width = 170  # Reducido de 180 a 170
         x_pos = (210 - img_width) / 2
         pdf.image(img_path, x=x_pos, w=img_width)
         
         if os.path.exists(img_path):
             os.remove(img_path)
     else:
-        pdf.set_font('Arial', 'I', 10)
+        pdf.set_font('Arial', 'I', 9)
         pdf.set_text_color(100, 100, 100)
-        pdf.cell(0, 10, 'Sin datos de flujo para mostrar', 0, 1, 'C')
+        pdf.cell(0, 8, 'Sin datos de flujo para mostrar', 0, 1, 'C')
     
-    pdf.ln(8)
+    pdf.ln(5)
     
     # ==========================================
     # SECCIÓN 4: TABLA RESUMEN POR CENTRO DE COSTO
     # ==========================================
-    pdf.set_font('Arial', 'B', 14)
+    # Verificar espacio
+    if pdf.get_y() > 80:
+        pdf.add_page()
+    
+    pdf.set_font('Arial', 'B', 13)
     pdf.set_text_color(*color_primario)
-    pdf.cell(0, 10, 'RESUMEN POR CENTRO DE COSTO', 0, 1, 'L')
+    pdf.cell(0, 8, 'RESUMEN POR CENTRO DE COSTO', 0, 1, 'L')
     
     pdf.set_draw_color(*color_secundario)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(5)
+    pdf.ln(3)
     
     cursor.execute('''
         SELECT cc.codigo, cc.nombre, 
@@ -523,12 +534,12 @@ def generar_pdf_dashboard(conn):
     
     if resultados_resumen:
         # Definir anchos de columna para centrar la tabla
-        col_widths = [25, 60, 25, 40, 40]
+        col_widths = [22, 55, 22, 38, 38]  # Ajustados
         total_width = sum(col_widths)
         x_start = (210 - total_width) / 2
         
         # Header de la tabla
-        pdf.set_font('Arial', 'B', 9)
+        pdf.set_font('Arial', 'B', 7)  # Reducido de 9 a 7
         pdf.set_fill_color(*color_primario)
         pdf.set_text_color(255, 255, 255)
         
@@ -536,11 +547,11 @@ def generar_pdf_dashboard(conn):
         
         pdf.set_x(x_start)
         for i, (header, width) in enumerate(zip(headers, col_widths)):
-            pdf.cell(width, 10, header, 1, 0, 'C', 1)
+            pdf.cell(width, 8, header, 1, 0, 'C', 1)  # Reducido de 10 a 8
         pdf.ln()
         
         # Datos de la tabla
-        pdf.set_font('Arial', '', 8)
+        pdf.set_font('Arial', '', 6)  # Reducido de 8 a 6
         pdf.set_text_color(0, 0, 0)
         
         for idx, row in enumerate(resultados_resumen):
@@ -552,28 +563,32 @@ def generar_pdf_dashboard(conn):
             
             pdf.set_x(x_start)
             
-            pdf.cell(col_widths[0], 8, str(row['codigo']), 1, 0, 'C', 1)
-            pdf.cell(col_widths[1], 8, str(row['nombre'])[:30], 1, 0, 'L', 1)
-            pdf.cell(col_widths[2], 8, str(row['num_movimientos']), 1, 0, 'C', 1)
-            pdf.cell(col_widths[3], 8, f"${row['total_egresos']:,.2f}", 1, 0, 'R', 1)
-            pdf.cell(col_widths[4], 8, f"${row['total_ingresos']:,.2f}", 1, 1, 'R', 1)
+            pdf.cell(col_widths[0], 6, str(row['codigo']), 1, 0, 'C', 1)  # Reducido de 8 a 6
+            pdf.cell(col_widths[1], 6, str(row['nombre'])[:25], 1, 0, 'L', 1)  # Reducido de 30 a 25
+            pdf.cell(col_widths[2], 6, str(row['num_movimientos']), 1, 0, 'C', 1)
+            pdf.cell(col_widths[3], 6, f"${row['total_egresos']:,.0f}", 1, 0, 'R', 1)  # Sin decimales
+            pdf.cell(col_widths[4], 6, f"${row['total_ingresos']:,.0f}", 1, 1, 'R', 1)
     else:
-        pdf.set_font('Arial', 'I', 10)
+        pdf.set_font('Arial', 'I', 9)
         pdf.set_text_color(100, 100, 100)
-        pdf.cell(0, 10, 'Sin datos para mostrar', 0, 1, 'C')
+        pdf.cell(0, 8, 'Sin datos para mostrar', 0, 1, 'C')
     
-    pdf.ln(8)
+    pdf.ln(5)
     
     # ==========================================
     # SECCIÓN 5: ÚLTIMOS MOVIMIENTOS
     # ==========================================
-    pdf.set_font('Arial', 'B', 14)
+    # Verificar espacio
+    if pdf.get_y() > 80:
+        pdf.add_page()
+    
+    pdf.set_font('Arial', 'B', 13)
     pdf.set_text_color(*color_primario)
-    pdf.cell(0, 10, 'ULTIMOS 10 MOVIMIENTOS', 0, 1, 'L')
+    pdf.cell(0, 8, 'ULTIMOS 10 MOVIMIENTOS', 0, 1, 'L')
     
     pdf.set_draw_color(*color_secundario)
     pdf.line(10, pdf.get_y(), 200, pdf.get_y())
-    pdf.ln(5)
+    pdf.ln(3)
     
     cursor.execute('''
         SELECT m.fecha, m.tipo, cc.nombre as centro, m.concepto, m.monto 
@@ -585,11 +600,11 @@ def generar_pdf_dashboard(conn):
     movimientos = cursor.fetchall()
     
     if movimientos:
-        col_widths = [25, 20, 45, 60, 40]
+        col_widths = [22, 18, 40, 55, 35]  # Ajustados
         total_width = sum(col_widths)
         x_start = (210 - total_width) / 2
         
-        pdf.set_font('Arial', 'B', 9)
+        pdf.set_font('Arial', 'B', 7)
         pdf.set_fill_color(*color_primario)
         pdf.set_text_color(255, 255, 255)
         
@@ -597,10 +612,10 @@ def generar_pdf_dashboard(conn):
         
         pdf.set_x(x_start)
         for header, width in zip(headers, col_widths):
-            pdf.cell(width, 10, header, 1, 0, 'C', 1)
+            pdf.cell(width, 8, header, 1, 0, 'C', 1)
         pdf.ln()
         
-        pdf.set_font('Arial', '', 8)
+        pdf.set_font('Arial', '', 6)
         pdf.set_text_color(0, 0, 0)
         
         for idx, mov in enumerate(movimientos):
@@ -611,7 +626,7 @@ def generar_pdf_dashboard(conn):
             
             pdf.set_x(x_start)
             
-            pdf.cell(col_widths[0], 8, str(mov['fecha']), 1, 0, 'C', 1)
+            pdf.cell(col_widths[0], 6, str(mov['fecha'])[-5:], 1, 0, 'C', 1)  # Solo día y mes
             
             # Color según tipo
             if mov['tipo'] == 'Ingreso':
@@ -619,25 +634,25 @@ def generar_pdf_dashboard(conn):
             else:
                 pdf.set_text_color(*color_rojo)
             
-            pdf.cell(col_widths[1], 8, mov['tipo'], 1, 0, 'C', 1)
+            pdf.cell(col_widths[1], 6, mov['tipo'][:3], 1, 0, 'C', 1)  # Solo primeras 3 letras
             pdf.set_text_color(0, 0, 0)
             
-            pdf.cell(col_widths[2], 8, str(mov['centro'])[:25] if mov['centro'] else 'N/A', 1, 0, 'L', 1)
-            pdf.cell(col_widths[3], 8, str(mov['concepto'])[:30], 1, 0, 'L', 1)
-            pdf.cell(col_widths[4], 8, f"${mov['monto']:,.2f}", 1, 1, 'R', 1)
+            pdf.cell(col_widths[2], 6, str(mov['centro'])[:20] if mov['centro'] else 'N/A', 1, 0, 'L', 1)
+            pdf.cell(col_widths[3], 6, str(mov['concepto'])[:28], 1, 0, 'L', 1)
+            pdf.cell(col_widths[4], 6, f"${mov['monto']:,.0f}", 1, 1, 'R', 1)  # Sin decimales
     else:
-        pdf.set_font('Arial', 'I', 10)
+        pdf.set_font('Arial', 'I', 9)
         pdf.set_text_color(100, 100, 100)
-        pdf.cell(0, 10, 'Sin movimientos registrados', 0, 1, 'C')
+        pdf.cell(0, 8, 'Sin movimientos registrados', 0, 1, 'C')
     
     # ==========================================
     # FOOTER
     # ==========================================
-    pdf.ln(10)
-    pdf.set_font('Arial', 'I', 8)
+    pdf.ln(5)
+    pdf.set_font('Arial', 'I', 7)  # Reducido de 8 a 7
     pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 5, 'Reporte generado automaticamente - Sistema Caja Chica Enterprise', 0, 0, 'C')
-    pdf.cell(0, 5, f'Pagina {pdf.page_no()}', 0, 1, 'C')
+    pdf.cell(0, 4, 'Reporte generado automaticamente - Sistema Caja Chica Enterprise', 0, 0, 'C')  # Reducido de 5 a 4
+    pdf.cell(0, 4, f'Pagina {pdf.page_no()}', 0, 1, 'C')
     
     # Guardar PDF
     nombre_archivo = f"reporte_dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
@@ -1115,7 +1130,7 @@ def vista_historial(conn):
         
         if movimientos:
             opciones = {f"{m['id']} - {m['fecha']} - {m['concepto'][:30]} (${m['monto']:,.2f})": m for m in movimientos}
-            movimiento_seleccionado = st.selectbox("Seleccionar Movimiento", list(opciones.keys()))
+            movimiento_seleccionado = st.selectbox("Seleccionar Movimiento", list(opciones.keys()), key="select_mov_edit")
             
             if movimiento_seleccionado:
                 mov_data = opciones[movimiento_seleccionado]
@@ -1171,7 +1186,7 @@ def vista_historial(conn):
                     
                     if btn_eliminar:
                         st.warning("⚠️ ¿Está seguro de eliminar este movimiento? Esta acción no se puede deshacer.")
-                        if st.button("🗑️ Confirmar Eliminación", type="secondary"):
+                        if st.button("🗑️ Confirmar Eliminación", type="secondary", key="confirm_delete_btn"):
                             exito, msg = eliminar_movimiento(conn, mov_data['id'])
                             if exito:
                                 st.success(f"✅ {msg}")

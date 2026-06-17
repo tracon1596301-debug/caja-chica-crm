@@ -7,9 +7,9 @@ from datetime import datetime, date
 import os
 from fpdf import FPDF
 from streamlit_calendar import calendar
-import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 import io
 import base64
 
@@ -28,18 +28,15 @@ st.set_page_config(
 # ==========================================
 st.markdown("""
 <style>
-    /* Fondo principal futurista */
     .main {
         background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
     }
     
-    /* Sidebar mejorado */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #1e3c72 0%, #2a5298 100%);
         border-right: 2px solid #00d4ff;
     }
     
-    /* Tarjetas futuristas */
     .metric-card {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         border-radius: 15px;
@@ -50,7 +47,27 @@ st.markdown("""
         margin: 10px 0;
     }
     
-    /* Botones futuristas */
+    .metric-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 12px 40px rgba(0, 212, 255, 0.4);
+    }
+    
+    .metric-value {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: white;
+        margin: 10px 0;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+    
+    .metric-label {
+        font-size: 0.85rem;
+        color: #e0e7ff;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        font-weight: 600;
+    }
+    
     .stButton>button {
         background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
         color: white;
@@ -67,7 +84,6 @@ st.markdown("""
         box-shadow: 0 6px 20px rgba(0, 212, 255, 0.6);
     }
     
-    /* Inputs mejorados */
     .stTextInput>div>div>input, .stSelectbox>div>div>select {
         background: rgba(255, 255, 255, 0.1);
         border: 1px solid #00d4ff;
@@ -75,53 +91,21 @@ st.markdown("""
         border-radius: 8px;
     }
     
-    /* Tablas futuristas */
     div[data-testid="stDataFrame"] {
         background: rgba(255, 255, 255, 0.05);
         border-radius: 10px;
         border: 1px solid rgba(0, 212, 255, 0.3);
     }
     
-    /* Alertas mejoradas */
-    .stAlert {
-        border-radius: 10px;
-        border: 1px solid rgba(0, 212, 255, 0.5);
-    }
-    
-    /* Títulos con efecto neón */
     h1, h2, h3 {
         color: #00d4ff;
         text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
     }
     
-    /* Texto en general */
     p, span, label, .stMarkdown {
         color: #e0e0e0;
     }
     
-    /* Menu items */
-    .menu-item {
-        padding: 12px 20px;
-        margin: 5px 0;
-        border-radius: 8px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        display: flex;
-        align-items: center;
-        color: white;
-    }
-    
-    .menu-item:hover {
-        background: rgba(0, 212, 255, 0.2);
-        transform: translateX(5px);
-    }
-    
-    .menu-item.active {
-        background: rgba(0, 212, 255, 0.4);
-        border-left: 4px solid #00d4ff;
-    }
-    
-    /* Calendario */
     .calendar-container {
         background: rgba(255, 255, 255, 0.05);
         border-radius: 15px;
@@ -142,31 +126,23 @@ def get_db_connection():
     return conn
 
 # ==========================================
-# INICIALIZACIÓN DE BD CON MIGRACIÓN
+# INICIALIZACIÓN DE BD
 # ==========================================
 def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Verificar si la tabla centros_costo existe y tiene la columna descripcion
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='centros_costo'")
     table_exists = cursor.fetchone()
     
     if table_exists:
-        # Verificar columnas existentes
         cursor.execute("PRAGMA table_info(centros_costo)")
         columns = [col[1] for col in cursor.fetchall()]
         
-        # Si no tiene la columna descripcion, recrear la tabla
         if 'descripcion' not in columns:
-            # Backup de datos existentes
             cursor.execute("SELECT * FROM centros_costo")
             old_data = cursor.fetchall()
-            
-            # Eliminar tabla antigua
             cursor.execute("DROP TABLE centros_costo")
-            
-            # Crear nueva tabla con estructura correcta
             cursor.execute('''
                 CREATE TABLE centros_costo (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -177,8 +153,6 @@ def init_db():
                     creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
-            
-            # Restaurar datos si los había
             for row in old_data:
                 try:
                     cursor.execute(
@@ -188,7 +162,6 @@ def init_db():
                 except:
                     pass
     else:
-        # Crear tabla desde cero
         cursor.execute('''
             CREATE TABLE centros_costo (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -200,7 +173,6 @@ def init_db():
             )
         ''')
 
-    # Tabla de Configuración
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS config (
             key TEXT PRIMARY KEY,
@@ -208,7 +180,6 @@ def init_db():
         )
     ''')
 
-    # Tabla de Movimientos
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS movimientos (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -225,11 +196,9 @@ def init_db():
         )
     ''')
 
-    # Datos semilla - Configuración
     cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('saldo_inicial', 16550.00)")
     cursor.execute("INSERT OR IGNORE INTO config (key, value) VALUES ('alerta_saldo_minimo', 2000.00)")
 
-    # Centros de costo iniciales - Verificar primero si existen
     centros = [
         ("10000", "DIRECCIÓN GENERAL", "Área de dirección y gerencia"),
         ("11000", "DIRECTOR ADJUNTO", "Dirección adjunta"),
@@ -243,7 +212,6 @@ def init_db():
         ("99999", "OTROS", "Otros centros de costo")
     ]
     
-    # Insertar solo si no existen
     for codigo, nombre, desc in centros:
         cursor.execute(
             "SELECT COUNT(*) FROM centros_costo WHERE codigo = ?",
@@ -314,60 +282,101 @@ def eliminar_movimiento(conn, id_movimiento):
     except Exception as e:
         return False, f"Error al eliminar: {str(e)}"
 
+# ==========================================
+# GENERACIÓN DE PDF PROFESIONAL
+# ==========================================
 def generar_pdf_dashboard(conn):
-    """Genera un PDF profesional del dashboard con gráficos"""
+    """Genera un PDF profesional con tablas centradas y gráficos bien alineados"""
     cursor = conn.cursor()
     saldo_inicial, saldo_actual = obtener_saldo(conn)
     
-    # Crear PDF
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    
-    # Header
-    pdf.set_font("Arial", "B", 20)
-    pdf.set_text_color(0, 100, 200)
-    pdf.cell(0, 10, "REPORTE EJECUTIVO - CAJA CHICA", 0, 1, "C")
-    pdf.set_font("Arial", "I", 12)
-    pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 10, f"Fecha de Generacion: {datetime.now().strftime('%d/%m/%Y %H:%M')}", 0, 1, "C")
-    pdf.ln(5)
-    
-    # Métricas principales en cajas
-    pdf.set_font("Arial", "B", 12)
-    pdf.set_fill_color(200, 220, 255)
-    
-    # Fila 1: Saldo Inicial y Saldo Actual
-    pdf.cell(95, 15, f"SALDO INICIAL", 1, 0, "C", 1)
-    pdf.cell(95, 15, f"SALDO ACTUAL", 1, 1, "C", 1)
-    
-    pdf.set_font("Arial", "", 14)
-    pdf.cell(95, 15, f"${saldo_inicial:,.2f}", 1, 0, "C")
-    pdf.cell(95, 15, f"${saldo_actual:,.2f}", 1, 1, "C")
-    
-    pdf.ln(5)
-    
-    # Ingresos y Egresos
+    # Obtener estadísticas
     cursor.execute("SELECT SUM(monto) FROM movimientos WHERE tipo='Ingreso'")
     ingresos = cursor.fetchone()[0] or 0.0
     cursor.execute("SELECT SUM(monto) FROM movimientos WHERE tipo='Egreso'")
     egresos = cursor.fetchone()[0] or 0.0
     
-    pdf.cell(95, 15, f"TOTAL INGRESOS", 1, 0, "C", 1)
-    pdf.cell(95, 15, f"TOTAL EGRESOS", 1, 1, "C", 1)
+    # Crear PDF
+    pdf = FPDF('P', 'mm', 'A4')
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
     
-    pdf.set_text_color(0, 150, 0)
-    pdf.cell(95, 15, f"${ingresos:,.2f}", 1, 0, "C")
-    pdf.set_text_color(200, 0, 0)
-    pdf.cell(95, 15, f"${egresos:,.2f}", 1, 1, "C")
-    pdf.set_text_color(0, 0, 0)
+    # Colores corporativos
+    color_primario = (30, 60, 114)  # Azul oscuro
+    color_secundario = (0, 212, 255)  # Cyan
+    color_verde = (16, 185, 129)
+    color_rojo = (239, 68, 68)
+    color_gris_claro = (240, 240, 240)
+    
+    # ==========================================
+    # HEADER
+    # ==========================================
+    pdf.set_fill_color(*color_primario)
+    pdf.rect(0, 0, 210, 35, 'F')
+    
+    pdf.set_font('Arial', 'B', 22)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_y(8)
+    pdf.cell(0, 10, 'REPORTE EJECUTIVO', 0, 1, 'C')
+    
+    pdf.set_font('Arial', '', 12)
+    pdf.cell(0, 8, 'Sistema de Control de Caja Chica', 0, 1, 'C')
+    
+    pdf.set_font('Arial', 'I', 10)
+    pdf.cell(0, 6, f'Fecha de Generacion: {datetime.now().strftime("%d/%m/%Y %H:%M")}', 0, 1, 'C')
     
     pdf.ln(10)
     
-    # Gráfico de Distribución de Gastos (Donut Chart)
-    pdf.set_font("Arial", "B", 14)
-    pdf.set_text_color(0, 100, 200)
-    pdf.cell(0, 10, "DISTRIBUCION DE GASTOS POR CENTRO DE COSTO", 0, 1, "L")
+    # ==========================================
+    # SECCIÓN 1: RESUMEN EJECUTIVO (KPIs)
+    # ==========================================
+    pdf.set_font('Arial', 'B', 14)
+    pdf.set_text_color(*color_primario)
+    pdf.cell(0, 10, 'RESUMEN EJECUTIVO', 0, 1, 'L')
+    
+    # Línea decorativa
+    pdf.set_draw_color(*color_secundario)
+    pdf.set_line_width(0.5)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(5)
+    
+    # KPIs en formato de tabla con fondo
+    ancho_celda = 45
+    alto_celda = 20
+    
+    # Fila 1: Saldo Inicial y Saldo Actual
+    pdf.set_font('Arial', 'B', 9)
+    pdf.set_fill_color(230, 240, 255)
+    
+    pdf.cell(ancho_celda, 8, 'SALDO INICIAL', 1, 0, 'C', 1)
+    pdf.cell(ancho_celda, 8, 'SALDO ACTUAL', 1, 0, 'C', 1)
+    pdf.cell(ancho_celda, 8, 'TOTAL INGRESOS', 1, 0, 'C', 1)
+    pdf.cell(ancho_celda, 8, 'TOTAL EGRESOS', 1, 1, 'C', 1)
+    
+    pdf.set_font('Arial', 'B', 11)
+    pdf.set_text_color(0, 0, 0)
+    
+    pdf.cell(ancho_celda, alto_celda, f'${saldo_inicial:,.2f}', 1, 0, 'C')
+    pdf.cell(ancho_celda, alto_celda, f'${saldo_actual:,.2f}', 1, 0, 'C')
+    
+    pdf.set_text_color(*color_verde)
+    pdf.cell(ancho_celda, alto_celda, f'${ingresos:,.2f}', 1, 0, 'C')
+    
+    pdf.set_text_color(*color_rojo)
+    pdf.cell(ancho_celda, alto_celda, f'${egresos:,.2f}', 1, 1, 'C')
+    
+    pdf.ln(8)
+    
+    # ==========================================
+    # SECCIÓN 2: GRÁFICO DE DISTRIBUCIÓN
+    # ==========================================
+    pdf.set_font('Arial', 'B', 14)
+    pdf.set_text_color(*color_primario)
+    pdf.cell(0, 10, 'DISTRIBUCION DE GASTOS POR CENTRO DE COSTO', 0, 1, 'L')
+    
+    pdf.set_draw_color(*color_secundario)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(5)
     
     cursor.execute('''
         SELECT cc.nombre, SUM(m.monto) as total 
@@ -376,60 +385,81 @@ def generar_pdf_dashboard(conn):
         WHERE m.tipo = 'Egreso' 
         GROUP BY cc.nombre
         ORDER BY total DESC
+        LIMIT 10
     ''')
     resultados = cursor.fetchall()
     
     if resultados:
-        # Crear gráfico de donut con matplotlib
-        fig, ax = plt.figure(figsize=(8, 4)), plt.gca()
+        # Crear gráfico con matplotlib
+        fig, ax = plt.subplots(figsize=(10, 5))
+        
         nombres = [row['nombre'][:20] for row in resultados]
         totales = [row['total'] for row in resultados]
         
         colors = plt.cm.Set3(range(len(nombres)))
-        wedges, texts, autotexts = ax.pie(totales, labels=nombres, autopct='%1.1f%%', 
-                                          colors=colors, startangle=90, pctdistance=0.85)
         
-        # Draw circle for donut
-        centre_circle = plt.Circle((0,0),0.70,fc='white')
-        fig.gca().add_artist(centre_circle)
+        wedges, texts, autotexts = ax.pie(
+            totales, 
+            labels=nombres, 
+            autopct='%1.1f%%',
+            colors=colors,
+            startangle=90,
+            pctdistance=0.85
+        )
         
-        plt.title('Distribución de Gastos', fontsize=12, fontweight='bold', pad=20)
+        # Hacer el centro blanco para efecto dona
+        centre_circle = plt.Circle((0,0), 0.70, fc='white')
+        ax.add_artist(centre_circle)
+        
+        ax.set_title('Distribucion de Gastos', fontsize=14, fontweight='bold', pad=20)
         plt.tight_layout()
         
-        # Guardar gráfico como imagen
+        # Guardar gráfico temporalmente
         img_path = "temp_donut.png"
         plt.savefig(img_path, dpi=150, bbox_inches='tight')
         plt.close()
         
-        # Agregar imagen al PDF
-        pdf.image(img_path, x=10, y=pdf.get_y(), w=190)
-        pdf.ln(95)
+        # Insertar imagen centrada
+        img_width = 160
+        x_pos = (210 - img_width) / 2
+        pdf.image(img_path, x=x_pos, w=img_width)
         
         # Limpiar archivo temporal
         if os.path.exists(img_path):
             os.remove(img_path)
+    else:
+        pdf.set_font('Arial', 'I', 10)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 10, 'Sin datos de egresos para mostrar', 0, 1, 'C')
     
     pdf.ln(5)
     
-    # Gráfico de Flujo de Caja Diario
-    pdf.set_font("Arial", "B", 14)
-    pdf.set_text_color(0, 100, 200)
-    pdf.cell(0, 10, "FLUJO DE CAJA DIARIO", 0, 1, "L")
+    # ==========================================
+    # SECCIÓN 3: GRÁFICO DE FLUJO DE CAJA
+    # ==========================================
+    pdf.add_page()
+    
+    pdf.set_font('Arial', 'B', 14)
+    pdf.set_text_color(*color_primario)
+    pdf.cell(0, 10, 'FLUJO DE CAJA DIARIO', 0, 1, 'L')
+    
+    pdf.set_draw_color(*color_secundario)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(5)
     
     cursor.execute('''
         SELECT fecha, tipo, SUM(monto) as total 
         FROM movimientos 
         GROUP BY fecha, tipo 
         ORDER BY fecha
-        LIMIT 10
+        LIMIT 30
     ''')
     resultados_flujo = cursor.fetchall()
     
     if resultados_flujo:
         df_flujo = pd.DataFrame(resultados_flujo, columns=['fecha', 'tipo', 'total'])
         
-        # Crear gráfico de barras
-        fig, ax = plt.figure(figsize=(10, 4)), plt.gca()
+        fig, ax = plt.subplots(figsize=(12, 5))
         
         fechas = df_flujo['fecha'].unique()
         ingresos_data = [df_flujo[(df_flujo['fecha']==f) & (df_flujo['tipo']=='Ingreso')]['total'].sum() for f in fechas]
@@ -438,34 +468,45 @@ def generar_pdf_dashboard(conn):
         x = range(len(fechas))
         width = 0.35
         
-        ax.bar(x, ingresos_data, width, label='Ingresos', color='#38ef7d')
-        ax.bar([i + width for i in x], egresos_data, width, label='Egresos', color='#eb3349')
+        ax.bar([i - width/2 for i in x], ingresos_data, width, label='Ingresos', color='#10b981')
+        ax.bar([i + width/2 for i in x], egresos_data, width, label='Egresos', color='#ef4444')
         
-        ax.set_xlabel('Fecha')
-        ax.set_ylabel('Monto ($)')
-        ax.set_title('Flujo de Caja Diario')
-        ax.set_xticks([i + width/2 for i in x])
+        ax.set_xlabel('Fecha', fontsize=10)
+        ax.set_ylabel('Monto ($)', fontsize=10)
+        ax.set_title('Flujo de Caja Diario', fontsize=14, fontweight='bold')
+        ax.set_xticks(x)
         ax.set_xticklabels([str(f) for f in fechas], rotation=45, ha='right')
         ax.legend()
         
         plt.tight_layout()
         
-        # Guardar gráfico
         img_path = "temp_bars.png"
         plt.savefig(img_path, dpi=150, bbox_inches='tight')
         plt.close()
         
-        # Agregar al PDF
-        pdf.image(img_path, x=10, y=pdf.get_y(), w=190)
-        pdf.ln(95)
+        img_width = 180
+        x_pos = (210 - img_width) / 2
+        pdf.image(img_path, x=x_pos, w=img_width)
         
         if os.path.exists(img_path):
             os.remove(img_path)
+    else:
+        pdf.set_font('Arial', 'I', 10)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 10, 'Sin datos de flujo para mostrar', 0, 1, 'C')
     
-    # Tabla Resumen por Centro de Costo
-    pdf.set_font("Arial", "B", 14)
-    pdf.set_text_color(0, 100, 200)
-    pdf.cell(0, 10, "RESUMEN POR CENTRO DE COSTO", 0, 1, "L")
+    pdf.ln(8)
+    
+    # ==========================================
+    # SECCIÓN 4: TABLA RESUMEN POR CENTRO DE COSTO
+    # ==========================================
+    pdf.set_font('Arial', 'B', 14)
+    pdf.set_text_color(*color_primario)
+    pdf.cell(0, 10, 'RESUMEN POR CENTRO DE COSTO', 0, 1, 'L')
+    
+    pdf.set_draw_color(*color_secundario)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(5)
     
     cursor.execute('''
         SELECT cc.codigo, cc.nombre, 
@@ -476,34 +517,127 @@ def generar_pdf_dashboard(conn):
         LEFT JOIN movimientos m ON cc.id = m.centro_costo_id
         GROUP BY cc.id, cc.codigo, cc.nombre
         ORDER BY total_egresos DESC
-        LIMIT 10
+        LIMIT 15
     ''')
     resultados_resumen = cursor.fetchall()
     
     if resultados_resumen:
-        # Headers
-        pdf.set_font("Arial", "B", 9)
-        pdf.set_fill_color(200, 220, 255)
-        pdf.cell(20, 8, "Codigo", 1, 0, "C", 1)
-        pdf.cell(60, 8, "Centro de Costo", 1, 0, "C", 1)
-        pdf.cell(25, 8, "Movimientos", 1, 0, "C", 1)
-        pdf.cell(40, 8, "Total Egresos", 1, 0, "C", 1)
-        pdf.cell(40, 8, "Total Ingresos", 1, 1, "C", 1)
+        # Definir anchos de columna para centrar la tabla
+        col_widths = [25, 60, 25, 40, 40]
+        total_width = sum(col_widths)
+        x_start = (210 - total_width) / 2
         
-        # Data
-        pdf.set_font("Arial", "", 8)
-        for row in resultados_resumen:
-            pdf.cell(20, 7, str(row['codigo']), 1, 0, "C")
-            pdf.cell(60, 7, row['nombre'][:30], 1, 0, "L")
-            pdf.cell(25, 7, str(row['num_movimientos']), 1, 0, "C")
-            pdf.cell(40, 7, f"${row['total_egresos']:,.2f}", 1, 0, "R")
-            pdf.cell(40, 7, f"${row['total_ingresos']:,.2f}", 1, 1, "R")
+        # Header de la tabla
+        pdf.set_font('Arial', 'B', 9)
+        pdf.set_fill_color(*color_primario)
+        pdf.set_text_color(255, 255, 255)
+        
+        headers = ['Código', 'Centro de Costo', 'Movs.', 'Total Egresos', 'Total Ingresos']
+        
+        pdf.set_x(x_start)
+        for i, (header, width) in enumerate(zip(headers, col_widths)):
+            pdf.cell(width, 10, header, 1, 0, 'C', 1)
+        pdf.ln()
+        
+        # Datos de la tabla
+        pdf.set_font('Arial', '', 8)
+        pdf.set_text_color(0, 0, 0)
+        
+        for idx, row in enumerate(resultados_resumen):
+            # Alternar colores de fondo
+            if idx % 2 == 0:
+                pdf.set_fill_color(*color_gris_claro)
+            else:
+                pdf.set_fill_color(255, 255, 255)
+            
+            pdf.set_x(x_start)
+            
+            pdf.cell(col_widths[0], 8, str(row['codigo']), 1, 0, 'C', 1)
+            pdf.cell(col_widths[1], 8, str(row['nombre'])[:30], 1, 0, 'L', 1)
+            pdf.cell(col_widths[2], 8, str(row['num_movimientos']), 1, 0, 'C', 1)
+            pdf.cell(col_widths[3], 8, f"${row['total_egresos']:,.2f}", 1, 0, 'R', 1)
+            pdf.cell(col_widths[4], 8, f"${row['total_ingresos']:,.2f}", 1, 1, 'R', 1)
+    else:
+        pdf.set_font('Arial', 'I', 10)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 10, 'Sin datos para mostrar', 0, 1, 'C')
     
-    # Footer
-    pdf.set_y(-20)
-    pdf.set_font("Arial", "I", 8)
+    pdf.ln(8)
+    
+    # ==========================================
+    # SECCIÓN 5: ÚLTIMOS MOVIMIENTOS
+    # ==========================================
+    pdf.set_font('Arial', 'B', 14)
+    pdf.set_text_color(*color_primario)
+    pdf.cell(0, 10, 'ULTIMOS 10 MOVIMIENTOS', 0, 1, 'L')
+    
+    pdf.set_draw_color(*color_secundario)
+    pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+    pdf.ln(5)
+    
+    cursor.execute('''
+        SELECT m.fecha, m.tipo, cc.nombre as centro, m.concepto, m.monto 
+        FROM movimientos m
+        LEFT JOIN centros_costo cc ON m.centro_costo_id = cc.id
+        ORDER BY m.fecha DESC, m.id DESC
+        LIMIT 10
+    ''')
+    movimientos = cursor.fetchall()
+    
+    if movimientos:
+        col_widths = [25, 20, 45, 60, 40]
+        total_width = sum(col_widths)
+        x_start = (210 - total_width) / 2
+        
+        pdf.set_font('Arial', 'B', 9)
+        pdf.set_fill_color(*color_primario)
+        pdf.set_text_color(255, 255, 255)
+        
+        headers = ['Fecha', 'Tipo', 'Centro', 'Concepto', 'Monto']
+        
+        pdf.set_x(x_start)
+        for header, width in zip(headers, col_widths):
+            pdf.cell(width, 10, header, 1, 0, 'C', 1)
+        pdf.ln()
+        
+        pdf.set_font('Arial', '', 8)
+        pdf.set_text_color(0, 0, 0)
+        
+        for idx, mov in enumerate(movimientos):
+            if idx % 2 == 0:
+                pdf.set_fill_color(*color_gris_claro)
+            else:
+                pdf.set_fill_color(255, 255, 255)
+            
+            pdf.set_x(x_start)
+            
+            pdf.cell(col_widths[0], 8, str(mov['fecha']), 1, 0, 'C', 1)
+            
+            # Color según tipo
+            if mov['tipo'] == 'Ingreso':
+                pdf.set_text_color(*color_verde)
+            else:
+                pdf.set_text_color(*color_rojo)
+            
+            pdf.cell(col_widths[1], 8, mov['tipo'], 1, 0, 'C', 1)
+            pdf.set_text_color(0, 0, 0)
+            
+            pdf.cell(col_widths[2], 8, str(mov['centro'])[:25] if mov['centro'] else 'N/A', 1, 0, 'L', 1)
+            pdf.cell(col_widths[3], 8, str(mov['concepto'])[:30], 1, 0, 'L', 1)
+            pdf.cell(col_widths[4], 8, f"${mov['monto']:,.2f}", 1, 1, 'R', 1)
+    else:
+        pdf.set_font('Arial', 'I', 10)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 10, 'Sin movimientos registrados', 0, 1, 'C')
+    
+    # ==========================================
+    # FOOTER
+    # ==========================================
+    pdf.ln(10)
+    pdf.set_font('Arial', 'I', 8)
     pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 10, "Reporte generado automaticamente - Sistema Caja Chica Enterprise", 0, 0, "C")
+    pdf.cell(0, 5, 'Reporte generado automaticamente - Sistema Caja Chica Enterprise', 0, 0, 'C')
+    pdf.cell(0, 5, f'Pagina {pdf.page_no()}', 0, 1, 'C')
     
     # Guardar PDF
     nombre_archivo = f"reporte_dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
@@ -518,7 +652,6 @@ def generar_pdf_dashboard(conn):
 # ==========================================
 def sidebar_mejorado():
     with st.sidebar:
-        # Header con logo/branding
         st.markdown("""
         <div style='text-align: center; padding: 20px 0;'>
             <div style='font-size: 48px;'>💼</div>
@@ -529,25 +662,18 @@ def sidebar_mejorado():
         
         st.markdown("---")
         
-        # Saldo destacado
         conn = get_db_connection()
         saldo_inicial, saldo_actual = obtener_saldo(conn)
         
         st.markdown(f"""
         <div class='metric-card'>
-            <div style='font-size: 12px; opacity: 0.8;'>SALDO EN CAJA</div>
-            <div style='font-size: 28px; font-weight: bold; margin: 10px 0;'>
-                ${saldo_actual:,.2f}
-            </div>
-            <div style='font-size: 11px; opacity: 0.7;'>
-                Inicial: ${saldo_inicial:,.2f}
-            </div>
+            <div class='metric-label'>SALDO EN CAJA</div>
+            <div class='metric-value' style='font-size: 2rem;'>${saldo_actual:,.2f}</div>
         </div>
         """, unsafe_allow_html=True)
         
         st.markdown("---")
         
-        # Menú de navegación mejorado
         menu_items = {
             "📊 Dashboard Ejecutivo": "dashboard",
             "🏢 Centros de Costo": "centros",
@@ -563,7 +689,6 @@ def sidebar_mejorado():
                 st.session_state['page'] = key
                 st.rerun()
         
-        # Footer del sidebar
         st.markdown("---")
         st.markdown("""
         <div style='text-align: center; padding: 10px; color: rgba(255,255,255,0.5); font-size: 11px;'>
@@ -579,7 +704,6 @@ def sidebar_mejorado():
 def vista_dashboard(conn):
     st.title("📊 Dashboard Ejecutivo")
     
-    # KPIs con diseño mejorado
     col1, col2, col3, col4 = st.columns(4)
     
     saldo_inicial, saldo_actual = obtener_saldo(conn)
@@ -594,24 +718,24 @@ def vista_dashboard(conn):
     with col1:
         st.markdown(f"""
         <div class='metric-card'>
-            <div style='font-size: 12px;'>SALDO INICIAL</div>
-            <div style='font-size: 24px; font-weight: bold;'>${saldo_inicial:,.2f}</div>
+            <div class='metric-label'>SALDO INICIAL</div>
+            <div class='metric-value'>${saldo_inicial:,.2f}</div>
         </div>
         """, unsafe_allow_html=True)
     
     with col2:
         st.markdown(f"""
         <div class='metric-card' style='background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);'>
-            <div style='font-size: 12px;'>TOTAL INGRESOS</div>
-            <div style='font-size: 24px; font-weight: bold;'>${ingresos:,.2f}</div>
+            <div class='metric-label'>TOTAL INGRESOS</div>
+            <div class='metric-value'>${ingresos:,.2f}</div>
         </div>
         """, unsafe_allow_html=True)
     
     with col3:
         st.markdown(f"""
         <div class='metric-card' style='background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);'>
-            <div style='font-size: 12px;'>TOTAL EGRESOS</div>
-            <div style='font-size: 24px; font-weight: bold;'>${egresos:,.2f}</div>
+            <div class='metric-label'>TOTAL EGRESOS</div>
+            <div class='metric-value'>${egresos:,.2f}</div>
         </div>
         """, unsafe_allow_html=True)
     
@@ -619,21 +743,19 @@ def vista_dashboard(conn):
         color = "#38ef7d" if saldo_actual >= 0 else "#eb3349"
         st.markdown(f"""
         <div class='metric-card' style='background: linear-gradient(135deg, {color} 0%, {color}dd 100%);'>
-            <div style='font-size: 12px;'>SALDO FINAL</div>
-            <div style='font-size: 24px; font-weight: bold;'>${saldo_actual:,.2f}</div>
+            <div class='metric-label'>SALDO FINAL</div>
+            <div class='metric-value'>${saldo_actual:,.2f}</div>
         </div>
         """, unsafe_allow_html=True)
     
-    # Alerta de saldo mínimo
     cursor.execute("SELECT value FROM config WHERE key = 'alerta_saldo_minimo'")
     result = cursor.fetchone()
     alerta_min = result['value'] if result else 2000.00
     if saldo_actual < alerta_min:
-        st.error(f"⚠️ **ALERTA CRÍTICA**: El saldo actual (${saldo_actual:,.2f}) ha caído por debajo del mínimo configurado (${alerta_min:,.2f}). Se requiere reposición inmediata.")
+        st.error(f"⚠️ **ALERTA CRÍTICA**: El saldo actual (${saldo_actual:,.2f}) ha caído por debajo del mínimo configurado (${alerta_min:,.2f}).")
     
     st.markdown("---")
     
-    # Gráficos
     col_g1, col_g2 = st.columns(2)
     
     with col_g1:
@@ -660,7 +782,7 @@ def vista_dashboard(conn):
             st.plotly_chart(fig_pie, use_container_width=True)
         else:
             st.info("Sin datos de egresos para mostrar.")
-    
+
     with col_g2:
         st.subheader("📈 Flujo de Caja Diario")
         cursor.execute('''
@@ -722,7 +844,6 @@ def vista_dashboard(conn):
 def vista_centros_costo(conn):
     st.title("🏢 Gestión de Centros de Costo")
     
-    # Tabs para diferentes acciones
     tab1, tab2, tab3 = st.tabs(["➕ Nuevo Centro", "✏️ Editar Centro", "🗑️ Eliminar Centro"])
     
     cursor = conn.cursor()
@@ -759,7 +880,6 @@ def vista_centros_costo(conn):
     with tab2:
         st.subheader("Editar Centro de Costo")
         
-        # Obtener centros existentes
         cursor.execute("SELECT id, codigo, nombre, descripcion FROM centros_costo WHERE activo = 1 ORDER BY codigo")
         centros = cursor.fetchall()
         
@@ -810,17 +930,15 @@ def vista_centros_costo(conn):
             if centro_eliminar:
                 centro_data = opciones_centros[centro_eliminar]
                 
-                # Verificar si tiene movimientos asociados
                 cursor.execute("SELECT COUNT(*) as count FROM movimientos WHERE centro_costo_id = ?", (centro_data['id'],))
                 count = cursor.fetchone()['count']
                 
                 if count > 0:
                     st.error(f"⛔ No se puede eliminar: **{centro_data['nombre']}** tiene {count} movimientos asociados.")
-                    st.info("💡 Primero debes eliminar o reasignar los movimientos asociados a este centro.")
                 else:
                     st.warning(f"⚠️ ¿Está seguro de eliminar el centro: **{centro_data['nombre']}**?\n\nEsta acción no se puede deshacer.")
                     
-                    if st.button("🗑️ Confirmar Eliminación", use_container_width=True, type="primary"):
+                    if st.button("🗑️ Confirmar Eliminación", use_container_width=True, type="secondary"):
                         try:
                             cursor.execute("DELETE FROM centros_costo WHERE id = ?", (centro_data['id'],))
                             conn.commit()
@@ -831,7 +949,6 @@ def vista_centros_costo(conn):
         else:
             st.info("No hay centros de costo registrados")
     
-    # Mostrar lista de centros
     st.markdown("---")
     st.subheader("📋 Lista de Centros de Costo")
     
@@ -857,7 +974,6 @@ def vista_centros_costo(conn):
 def vista_registro(conn):
     st.title("📝 Registrar Nuevo Movimiento")
     
-    # Cargar catálogos
     cursor = conn.cursor()
     cursor.execute("SELECT id, codigo, nombre FROM centros_costo WHERE activo = 1 ORDER BY codigo")
     centros = cursor.fetchall()
@@ -885,7 +1001,6 @@ def vista_registro(conn):
         submitted = st.form_submit_button("💾 Registrar Transacción", type="primary", use_container_width=True)
         
         if submitted:
-            # Validaciones
             if not solicitante.strip():
                 st.error("⛔ El campo 'Solicitante' es obligatorio.")
             elif not concepto.strip():
@@ -914,7 +1029,6 @@ def vista_registro(conn):
 def vista_historial(conn):
     st.title("📜 Historial y Auditoría")
     
-    # Tabs para ver y editar/eliminar
     tab_ver, tab_editar = st.tabs(["👁️ Ver Movimientos", "✏️ Editar/Eliminar Movimientos"])
     
     with tab_ver:
@@ -936,7 +1050,6 @@ def vista_historial(conn):
                                      'Concepto', 'Solicitante', '¿Factura?', 
                                      'No. Factura', 'Monto'])
             
-            # Filtros
             with st.expander("🔍 Filtros Avanzados", expanded=False):
                 col_f1, col_f2, col_f3 = st.columns(3)
                 with col_f1:
@@ -958,7 +1071,6 @@ def vista_historial(conn):
                 df['¿Factura?'].isin(factura_filtro)
             ]
             
-            # Filtro por fechas
             if fecha_inicio and fecha_fin:
                 df_filtrado['Fecha'] = pd.to_datetime(df_filtrado['Fecha'])
                 df_filtrado = df_filtrado[
@@ -966,20 +1078,17 @@ def vista_historial(conn):
                     (df_filtrado['Fecha'] <= pd.Timestamp(fecha_fin))
                 ]
             
-            # Mostrar tabla
             st.dataframe(
                 df_filtrado.style.format({"Monto": "${:,.2f}"}),
                 use_container_width=True,
                 height=500
             )
             
-            # Estadísticas
             col_s1, col_s2, col_s3 = st.columns(3)
             col_s1.metric("📊 Total Registros", len(df_filtrado))
             col_s2.metric("💰 Monto Total", f"${df_filtrado['Monto'].sum():,.2f}")
             col_s3.metric("📈 Promedio", f"${df_filtrado['Monto'].mean():,.2f}")
             
-            # Exportación
             csv = df_filtrado.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
             st.download_button(
                 label="📥 Exportar Reporte a CSV",
@@ -1005,19 +1114,16 @@ def vista_historial(conn):
         movimientos = cursor.fetchall()
         
         if movimientos:
-            # Selector de movimiento
-            opciones = {f"{m['id']} - {m['fecha']} - {m['concepto'][:30]} ({m['monto']:,.2f})": m for m in movimientos}
+            opciones = {f"{m['id']} - {m['fecha']} - {m['concepto'][:30]} (${m['monto']:,.2f})": m for m in movimientos}
             movimiento_seleccionado = st.selectbox("Seleccionar Movimiento", list(opciones.keys()))
             
             if movimiento_seleccionado:
                 mov_data = opciones[movimiento_seleccionado]
                 
-                # Cargar centros de costo
                 cursor.execute("SELECT id, codigo, nombre FROM centros_costo WHERE activo = 1 ORDER BY codigo")
                 centros = cursor.fetchall()
                 opciones_centros = {f"{c['codigo']} - {c['nombre']}": c['id'] for c in centros}
                 
-                # Encontrar el centro actual
                 centro_actual = None
                 for label, id_cc in opciones_centros.items():
                     if id_cc == mov_data['centro_costo_id']:
@@ -1158,7 +1264,6 @@ def vista_calendario(conn):
     
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
     
-    # Resumen de movimientos
     st.subheader("📊 Resumen de Movimientos")
     
     if movimientos:
@@ -1168,15 +1273,15 @@ def vista_calendario(conn):
         with col1:
             st.markdown(f"""
             <div class='metric-card' style='background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);'>
-                <div style='font-size: 12px;'>TOTAL INGRESOS</div>
-                <div style='font-size: 20px; font-weight: bold;'>${df_mov[df_mov['tipo']=='Ingreso']['monto'].sum():,.2f}</div>
+                <div class='metric-label'>TOTAL INGRESOS</div>
+                <div class='metric-value' style='font-size: 1.5rem;'>${df_mov[df_mov['tipo']=='Ingreso']['monto'].sum():,.2f}</div>
             </div>
             """, unsafe_allow_html=True)
         with col2:
             st.markdown(f"""
             <div class='metric-card' style='background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);'>
-                <div style='font-size: 12px;'>TOTAL EGRESOS</div>
-                <div style='font-size: 20px; font-weight: bold;'>${df_mov[df_mov['tipo']=='Egreso']['monto'].sum():,.2f}</div>
+                <div class='metric-label'>TOTAL EGRESOS</div>
+                <div class='metric-value' style='font-size: 1.5rem;'>${df_mov[df_mov['tipo']=='Egreso']['monto'].sum():,.2f}</div>
             </div>
             """, unsafe_allow_html=True)
         with col3:
@@ -1184,8 +1289,8 @@ def vista_calendario(conn):
             color = "#38ef7d" if neto >= 0 else "#eb3349"
             st.markdown(f"""
             <div class='metric-card' style='background: linear-gradient(135deg, {color} 0%, {color}dd 100%);'>
-                <div style='font-size: 12px;'>BALANCE NETO</div>
-                <div style='font-size: 20px; font-weight: bold;'>${neto:,.2f}</div>
+                <div class='metric-label'>BALANCE NETO</div>
+                <div class='metric-value' style='font-size: 1.5rem;'>${neto:,.2f}</div>
             </div>
             """, unsafe_allow_html=True)
     else:
@@ -1241,9 +1346,11 @@ def vista_reportes(conn):
             <h3 style='color: white; margin-top: 0;'>📊 Dashboard Ejecutivo</h3>
             <p style='color: rgba(255,255,255,0.8);'>Reporte completo con:</p>
             <ul style='color: rgba(255,255,255,0.8);'>
-                <li>Resumen ejecutivo</li>
-                <li>Gráficos de distribución y flujo</li>
-                <li>Top centros de costo</li>
+                <li>Resumen ejecutivo con KPIs</li>
+                <li>Gráfico de distribución de gastos</li>
+                <li>Flujo de caja diario</li>
+                <li>Tabla resumen por centro de costo</li>
+                <li>Últimos movimientos registrados</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
@@ -1300,16 +1407,13 @@ def vista_reportes(conn):
 # MAIN
 # ==========================================
 def main():
-    # Inicializar sesión
     if 'page' not in st.session_state:
         st.session_state['page'] = 'dashboard'
     
     conn = init_db()
     
-    # Sidebar mejorado
     sidebar_mejorado()
     
-    # Navegación
     page = st.session_state.get('page', 'dashboard')
     
     if page == 'dashboard':
